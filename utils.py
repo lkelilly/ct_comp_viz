@@ -9,6 +9,7 @@ Data processing utilities.
 """
 
 import pandas as pd
+import re
 
 from indication_mapping import map_indication
 
@@ -23,6 +24,14 @@ def _get(d, *path, default=None):
         if node is None:
             return default
     return node
+
+
+def _extract_title_acronym(title: str) -> str:
+    """Extract a trailing all-caps parenthetical from a title, e.g. 'Study (ACRONYM)' → 'ACRONYM'."""
+    if not isinstance(title, str):
+        return ""
+    m = re.search(r'\(([A-Z][A-Z0-9\-]+)\)\s*$', title.strip())
+    return m.group(1) if m else ""
 
 
 def _join_list(items, key, sep=" | "):
@@ -80,8 +89,9 @@ def _extract_study(study: dict) -> dict:
     enrollment  = _get(design, "enrollmentInfo", "count", default=None)
 
     # Conditions — list of strings
-    cond_list  = conditions.get("conditions") or []
-    cond_str   = " | ".join(cond_list) if cond_list else ""
+    cond_list       = conditions.get("conditions") or []
+    cond_str        = " | ".join(cond_list) if cond_list else ""
+    first_condition = cond_list[0].strip() if cond_list else ""
 
     # Interventions — list of dicts with "name" key
     intr_list  = arms.get("interventions") or []
@@ -112,6 +122,7 @@ def _extract_study(study: dict) -> dict:
         "acronym":                    acronym,
         "study_title":                title,
         "conditions":                 cond_str,
+        "first_condition":            first_condition,
         "interventions":              intr_str,
         "enrollment":                 enrollment,
         "start_date":                 start_date,
@@ -219,6 +230,9 @@ def process_raw_ctgov(df: pd.DataFrame) -> pd.DataFrame:
         def _resolve_acronym(r):
             if isinstance(r.get("acronym"), str) and r["acronym"].strip():
                 return r["acronym"]
+            title_acronym = _extract_title_acronym(r.get("study_title") or "")
+            if title_acronym:
+                return title_acronym
             if isinstance(r.get("lilly_id"), str) and r["lilly_id"].strip():
                 return r["lilly_id"][-4:]
             return r.get("nct_number", "")
@@ -226,7 +240,15 @@ def process_raw_ctgov(df: pd.DataFrame) -> pd.DataFrame:
 
     # ── Step 4: Derive indication ─────────────────────────────────────────────
     if "conditions" in df.columns:
-        df["indication"] = df["conditions"].apply(map_indication)
+        def _map_row(row):
+            first_cond = row.get("first_condition") or ""
+            if not first_cond:
+                first_cond = str(row.get("conditions") or "").split(" | ")[0].strip()
+            outcome     = row.get("primary_outcome_measures") or ""
+            title       = row.get("study_title") or ""
+            sec_outcome = row.get("secondary_outcome_measures") or ""
+            return map_indication(first_cond, outcome, title, sec_outcome)
+        df["indication"] = df.apply(_map_row, axis=1)
     else:
         df["indication"] = "Other"
 
