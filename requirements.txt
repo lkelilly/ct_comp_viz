@@ -1,0 +1,6 @@
+itables>=2.0
+
+
+## inspect the packages used in the project
+
+# python, shiny, pandas, api stuff, scispacy

@@ -1,0 +1,175 @@
+{
+  "priority": [
+    "Heart Failure",
+    "ASCVD CVOT",
+    "Atrial Fibrillation",
+    "Kidney Disease",
+    "Chronic Weight Management",
+    "Type 2 Diabetes",
+    "Type 1 Diabetes",
+    "Hypertension",
+    "Dyslipidemia",
+    "NASH/NAFLD",
+    "Obstructive Sleep Apnea",
+    "Knee OA",
+    "Alcohol-related Liver Disease",
+    "Peripheral Arterial Disease",
+    "Diabetic Retinopathy",
+    "Alzheimer's Disease",
+    "Pharmacology/PK",
+    "Healthy Volunteer"
+  ],
+  "synonyms": {
+    "Heart Failure": [
+      "Heart Failure",
+      "Heart Failure, Systolic",
+      "Heart Failure With Preserved Ejection Fraction",
+      "HFpEF",
+      "Congestive Heart Failure",
+      "Cardiac Failure"
+    ],
+    "ASCVD CVOT": [
+      "Cardiovascular Disease",
+      "Cardiovascular Diseases",
+      "Cardiovascular Outcome",
+      "CVD",
+      "Coronary Artery Disease",
+      "Coronary Atherosclerosis",
+      "Atherosclerosis",
+      "Myocardial Infarction",
+      "Stroke",
+      "Unstable Angina",
+      "Major Adverse Cardiovascular",
+      "MACE"
+    ],
+    "Atrial Fibrillation": [
+      "Atrial Fibrillation",
+      "AF"
+    ],
+    "Kidney Disease": [
+      "Chronic Kidney Disease",
+      "CKD",
+      "Renal Insufficiency",
+      "Renal Failure",
+      "Kidney Disease",
+      "Kidney Impairment",
+      "End Stage Renal Disease",
+      "ESRD",
+      "Nephropathy",
+      "Albuminuria",
+      "Chronic Kidney Disease (CKD)"
+    ],
+    "Chronic Weight Management": [
+      "Obesity",
+      "Obese",
+      "Overweight",
+      "Overweight or Obesity",
+      "Obesity or Overweight",
+      "Obesity Class I",
+      "Obesity Class II",
+      "Obesity Class III",
+      "Obesity Disease",
+      "Excess Body Weight",
+      "Body Weight Management",
+      "Weight Management",
+      "Overweight and Obesity",
+      "Chronic Weight Management"
+    ],
+    "Type 2 Diabetes": [
+      "Type 2 Diabetes",
+      "Type 2 Diabetes Mellitus",
+      "Type2 Diabetes",
+      "T2D",
+      "T2DM",
+      "Diabetes, Type 2",
+      "Diabetes Mellitus, Type 2",
+      "Diabetes Mellitus",
+      "Diabetes"
+    ],
+    "Type 1 Diabetes": [
+      "Type 1 Diabetes",
+      "Type 1 Diabetes Mellitus",
+      "T1D",
+      "T1DM",
+      "Diabetes, Type 1",
+      "Diabetes Mellitus, Type 1",
+      "Juvenile Diabetes"
+    ],
+    "Hypertension": [
+      "Hypertension",
+      "HTN",
+      "High Blood Pressure",
+      "Arterial Hypertension",
+      "Essential Hypertension"
+    ],
+    "Dyslipidemia": [
+      "Dyslipidemia",
+      "Dyslipidaemia",
+      "Hyperlipidemia",
+      "Hyperlipidaemia",
+      "Hypercholesterolemia",
+      "Hypercholesterolaemia",
+      "High LDL",
+      "Elevated LDL",
+      "Mixed Dyslipidemia"
+    ],
+    "NASH/NAFLD": [
+      "Nonalcoholic Steatohepatitis",
+      "Non-alcoholic Steatohepatitis",
+      "NASH",
+      "Nonalcoholic Fatty Liver Disease",
+      "Non-alcoholic Fatty Liver Disease",
+      "NAFLD",
+      "Steatohepatitis",
+      "Non-alcoholic Liver Disease"
+    ],
+    "Obstructive Sleep Apnea": [
+      "Obstructive Sleep Apnea",
+      "Obstructive Sleep Apnoea",
+      "OSA",
+      "Sleep Apnea",
+      "Sleep Apnoea"
+    ],
+    "Knee OA": [
+      "Knee Osteoarthritis",
+      "Osteoarthritis, Knee",
+      "Knee Pain",
+      "Knee Pain Chronic",
+      "Osteoarthritis Knee",
+      "Osteo Arthritis Knee"
+    ],
+    "Alcohol-related Liver Disease": [
+      "Alcohol-related Liver Disease",
+      "Alcoholic Liver Disease",
+      "ALD"
+    ],
+    "Peripheral Arterial Disease": [
+      "Peripheral Arterial Disease",
+      "Peripheral Artery Disease",
+      "PAD"
+    ],
+    "Diabetic Retinopathy": [
+      "Diabetic Retinopathy",
+      "Diabetic Eye Disease",
+      "Diabetic Macular Oedema",
+      "Diabetic Macular Edema"
+    ],
+    "Alzheimer's Disease": [
+      "Alzheimer's Disease",
+      "Alzheimer Disease",
+      "Early Alzheimer's Disease",
+      "Mild Cognitive Impairment"
+    ],
+    "Pharmacology/PK": [
+      "Hepatic Insufficiency",
+      "Hepatic Impairment",
+      "Renal Impairment"
+    ],
+    "Healthy Volunteer": [
+      "Healthy",
+      "Healthy Volunteer",
+      "Healthy Participants",
+      "Healthy Adults"
+    ]
+  }
+}
