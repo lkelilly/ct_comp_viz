@@ -41,6 +41,32 @@ def _extract_title_acronym(title: str, synonym_terms: frozenset = frozenset()) -
     return candidate
 
 
+def _match_compound(interventions_str: str, query_intr: str = "") -> str:
+    """Derive compound name from interventions string and user's search query."""
+    if not isinstance(interventions_str, str) or not interventions_str.strip():
+        return ""
+    # Normalize separators (CSV export uses "|", API-derived uses " | ") and strip type prefixes
+    raw_parts = [p.strip() for p in re.split(r'\s*\|\s*', interventions_str) if p.strip()]
+    parts = [re.sub(r'^[A-Z_]+:\s*', '', p) for p in raw_parts]
+    parts = [p for p in parts if p]
+    if not parts:
+        return ""
+    if not query_intr or not query_intr.strip():
+        return parts[0]
+
+    if re.search(r'\bOR\b', query_intr, re.IGNORECASE):
+        # OR logic: find which candidate term matches this study's interventions
+        candidates = [t.strip() for t in re.split(r'\bOR\b', query_intr, flags=re.IGNORECASE) if t.strip()]
+        for part in parts:
+            if any(c.lower() in part.lower() for c in candidates):
+                return part
+        return parts[0]
+    else:
+        # AND logic: display user's search terms joined with AND
+        terms = [t.strip() for t in re.split(r'[,\s]+', query_intr.strip()) if t.strip()]
+        return " AND ".join(terms) if terms else parts[0]
+
+
 def _join_list(items, key, sep=" | "):
     """Extract a field from a list of dicts and join as a string."""
     if not items or not isinstance(items, list):
@@ -183,7 +209,7 @@ def read_uploaded_csv(path: str) -> pd.DataFrame:
     return df
 
 
-def process_raw_ctgov(df: pd.DataFrame) -> pd.DataFrame:
+def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "") -> pd.DataFrame:
     """
     Process a raw CT.gov DataFrame (from API or uploaded CSV) into the
     canonical form used by all tabs.
@@ -266,9 +292,13 @@ def process_raw_ctgov(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df["indication"] = "Other"
 
-    # ── Step 5: Add compound placeholder ─────────────────────────────────────
-    if "compound" not in df.columns:
-        df["compound"] = "placeholder"
+    # ── Step 5: Derive compound from interventions ────────────────────────────
+    if "interventions" in df.columns:
+        df["compound"] = df["interventions"].apply(
+            lambda x: _match_compound(x, query_intr)
+        )
+    else:
+        df["compound"] = ""
 
     return df
 
