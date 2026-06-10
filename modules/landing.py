@@ -414,14 +414,10 @@ def landing_server(input, output, session,
     @reactive.effect
     @reactive.event(input.btn_back)
     def _on_back():
-        ui.update_text("query_cond_land", value=input.query_cond())
-        ui.update_text("query_intr_land", value=input.query_intr())
-        ui.update_text("query_term_land", value=input.query_term())
-        ui.update_text("query_locn_land", value=input.query_locn())
-        ui.update_text("query_spons",     value=input.query_spons()  or "")
-        ui.update_text("query_titles",    value=input.query_titles() or "")
-        ui.update_text("query_id",        value=input.query_id()     or "")
-        ui.update_text("query_outc",      value=input.query_outc()   or "")
+        ui.update_text("query_cond_land", value="")
+        ui.update_text("query_intr_land", value="")
+        ui.update_text("query_term_land", value="")
+        ui.update_text("query_locn_land", value="")
         log_entries.set(log_entries.get() + [
             (datetime.now().strftime("%H:%M:%S"), "info", "Returned to search page.")
         ])
@@ -447,6 +443,7 @@ def landing_server(input, output, session,
         try:
             df = read_uploaded_csv_fn(path)
             df = process_fn(df)
+            api_data.set(None)
             upload_data.set(df)
             upload_data_raw.set(df)
             log_entries.set(log_entries.get() + [(

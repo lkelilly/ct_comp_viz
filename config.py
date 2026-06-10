@@ -11,6 +11,7 @@ Shared constants used across all files.
 TRIAL_TABLE_LABELS = {
     "nct_number":                 "NCT Number",
     "acronym":                    "Acronym",
+    "compound":                   "Compound",
     "study_title":                "Study Title",
     "conditions":                 "Conditions",
     "interventions":              "Interventions",

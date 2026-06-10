@@ -15,6 +15,8 @@ from indication_mapping import map_indication
 
 # Column to display → DataFrame column name
 _DISPLAY_COLS = {
+    "Acronym":     "acronym",
+    "Compound":    "compound",
     "Study Title": "study_title",
     "Phase":       "phases",
     "Indication":  "indication",
