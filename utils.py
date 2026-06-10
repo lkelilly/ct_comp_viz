@@ -109,6 +109,17 @@ def _join_outcomes_full(items, sep=" | "):
     return sep.join(parts) if parts else ""
 
 
+def _split_eligibility(text: str) -> tuple:
+    """Split eligibilityCriteria raw string into (inclusion, exclusion) strings."""
+    if not isinstance(text, str) or not text.strip():
+        return "", ""
+    inc_match = re.search(r'Inclusion Criteria[:\s]*(.*?)(?=Exclusion Criteria|$)', text, re.IGNORECASE | re.DOTALL)
+    exc_match = re.search(r'Exclusion Criteria[:\s]*(.*?)$', text, re.IGNORECASE | re.DOTALL)
+    inc = inc_match.group(1).strip() if inc_match else ""
+    exc = exc_match.group(1).strip() if exc_match else ""
+    return inc, exc
+
+
 def _extract_study(study: dict) -> dict:
     """Extract display fields from one raw API study object."""
     proto       = study.get("protocolSection", {})
@@ -120,6 +131,7 @@ def _extract_study(study: dict) -> dict:
     outcomes    = proto.get("outcomesModule", {})
     conditions  = proto.get("conditionsModule", {})
     arms        = proto.get("armsInterventionsModule", {})
+    eligibility = proto.get("eligibilityModule", {})
 
     # Identity
     nct_id  = ident.get("nctId", "")
@@ -144,6 +156,9 @@ def _extract_study(study: dict) -> dict:
     cond_list       = conditions.get("conditions") or []
     cond_str        = " | ".join(cond_list) if cond_list else ""
     first_condition = cond_list[0].strip() if cond_list else ""
+
+    # Eligibility criteria — split into inclusion and exclusion
+    inc_criteria, exc_criteria = _split_eligibility(eligibility.get("eligibilityCriteria", ""))
 
     # Interventions — list of dicts with "name" key
     intr_list  = arms.get("interventions") or []
@@ -193,6 +208,8 @@ def _extract_study(study: dict) -> dict:
         "secondary_outcome_measures":        secondary_str,
         "simplified_primary_outcome":        simplified_primary_str,
         "simplified_secondary_outcome":      simplified_secondary_str,
+        "inclusion_criteria":         inc_criteria,
+        "exclusion_criteria":         exc_criteria,
         "sponsor":                    lead_sponsor,
         "funder_type":                funder_type,
         "other_ids":                  other_ids,
@@ -221,6 +238,7 @@ def studies_to_dataframe(studies: list) -> pd.DataFrame:
         "brief_summary",
         "primary_outcome_measures", "secondary_outcome_measures",
         "simplified_primary_outcome", "simplified_secondary_outcome",
+        "inclusion_criteria", "exclusion_criteria",
         "sponsor", "funder_type", "other_ids", "lilly_id",
     ]
     col_order = [c for c in col_order if c in df.columns]

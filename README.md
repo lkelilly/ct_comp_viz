@@ -5,3 +5,5 @@ Chnages from the initial version:
     - Compound mutate from the user's input or the primary intervention (the first, ignore placebo) 
         - placebo handling logic pending 
     - New outcome columns to keep (added)
+    - Added participation criteria. 
+        - split the eligibility and exclusion. 
