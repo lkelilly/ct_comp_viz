@@ -90,6 +90,25 @@ def _join_outcomes(items, sep=" | "):
     return sep.join(parts) if parts else ""
 
 
+def _join_outcomes_full(items, sep=" | "):
+    """Join outcome measure + timeFrame + description (full text)."""
+    if not items or not isinstance(items, list):
+        return ""
+    parts = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        measure     = item.get("measure", "")
+        timeframe   = item.get("timeFrame", "")
+        description = item.get("description", "")
+        if measure:
+            entry = f"{measure} ({timeframe})" if timeframe else measure
+            if description:
+                entry = f"{entry}: {description}"
+            parts.append(entry)
+    return sep.join(parts) if parts else ""
+
+
 def _extract_study(study: dict) -> dict:
     """Extract display fields from one raw API study object."""
     proto       = study.get("protocolSection", {})
@@ -134,8 +153,12 @@ def _extract_study(study: dict) -> dict:
     brief_summary = desc.get("briefSummary", "")
 
     # Outcomes
-    primary_str   = _join_outcomes(outcomes.get("primaryOutcomes")   or [])
-    secondary_str = _join_outcomes(outcomes.get("secondaryOutcomes") or [])
+    primary_raw   = outcomes.get("primaryOutcomes")   or []
+    secondary_raw = outcomes.get("secondaryOutcomes") or []
+    primary_str             = _join_outcomes_full(primary_raw)
+    secondary_str           = _join_outcomes_full(secondary_raw)
+    simplified_primary_str  = _join_outcomes(primary_raw)
+    simplified_secondary_str = _join_outcomes(secondary_raw)
 
     # Sponsor
     lead_sponsor = _get(sponsor_mod, "leadSponsor", "name",  default="")
@@ -166,8 +189,10 @@ def _extract_study(study: dict) -> dict:
         "study_type":                 study_type,
         "study_results":              "Yes" if has_results else "No",
         "brief_summary":              brief_summary,
-        "primary_outcome_measures":   primary_str,
-        "secondary_outcome_measures": secondary_str,
+        "primary_outcome_measures":          primary_str,
+        "secondary_outcome_measures":        secondary_str,
+        "simplified_primary_outcome":        simplified_primary_str,
+        "simplified_secondary_outcome":      simplified_secondary_str,
         "sponsor":                    lead_sponsor,
         "funder_type":                funder_type,
         "other_ids":                  other_ids,
@@ -195,6 +220,7 @@ def studies_to_dataframe(studies: list) -> pd.DataFrame:
         "phases", "study_status", "study_type", "study_results",
         "brief_summary",
         "primary_outcome_measures", "secondary_outcome_measures",
+        "simplified_primary_outcome", "simplified_secondary_outcome",
         "sponsor", "funder_type", "other_ids", "lilly_id",
     ]
     col_order = [c for c in col_order if c in df.columns]
@@ -284,9 +310,10 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "") -> pd.DataFrame:
             first_cond = row.get("first_condition") or ""
             if not first_cond:
                 first_cond = str(row.get("conditions") or "").split(" | ")[0].strip()
-            outcome     = row.get("primary_outcome_measures") or ""
+            # Use simplified outcomes for matching if available, fall back to full
+            outcome     = row.get("simplified_primary_outcome") or row.get("primary_outcome_measures") or ""
             title       = row.get("study_title") or ""
-            sec_outcome = row.get("secondary_outcome_measures") or ""
+            sec_outcome = row.get("simplified_secondary_outcome") or row.get("secondary_outcome_measures") or ""
             return map_indication(first_cond, outcome, title, sec_outcome)
         df["indication"] = df.apply(_map_row, axis=1)
     else:
