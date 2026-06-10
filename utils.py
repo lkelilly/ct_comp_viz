@@ -11,7 +11,7 @@ Data processing utilities.
 import pandas as pd
 import re
 
-from indication_mapping import map_indication
+from indication_mapping import map_indication, _SYNONYM_RULES
 
 
 def _get(d, *path, default=None):
@@ -26,12 +26,19 @@ def _get(d, *path, default=None):
     return node
 
 
-def _extract_title_acronym(title: str) -> str:
+def _extract_title_acronym(title: str, synonym_terms: frozenset = frozenset()) -> str:
     """Extract a trailing all-caps parenthetical from a title, e.g. 'Study (ACRONYM)' → 'ACRONYM'."""
     if not isinstance(title, str):
         return ""
     m = re.search(r'\(([A-Z][A-Z0-9\-]+)\)\s*$', title.strip())
-    return m.group(1) if m else ""
+    if not m:
+        return ""
+    candidate = m.group(1)
+    if re.search(r'\d{4,}', candidate):
+        return ""
+    if candidate.lower() in synonym_terms:
+        return ""
+    return candidate
 
 
 def _join_list(items, key, sep=" | "):
@@ -227,10 +234,17 @@ def process_raw_ctgov(df: pd.DataFrame) -> pd.DataFrame:
 
     # ── Step 3: Acronym fallback ──────────────────────────────────────────────
     if "nct_number" in df.columns:
+        synonym_terms = frozenset(term for _, terms in _SYNONYM_RULES for term in terms)
+
         def _resolve_acronym(r):
-            if isinstance(r.get("acronym"), str) and r["acronym"].strip():
-                return r["acronym"]
-            title_acronym = _extract_title_acronym(r.get("study_title") or "")
+            existing = r.get("acronym")
+            if isinstance(existing, str):
+                existing = existing.strip()
+                # Keep existing value only if it looks like a real acronym:
+                # not empty and not an NCT number (NCT followed by digits)
+                if existing and not re.match(r'^NCT\d+$', existing, re.IGNORECASE):
+                    return existing
+            title_acronym = _extract_title_acronym(r.get("study_title") or "", synonym_terms)
             if title_acronym:
                 return title_acronym
             if isinstance(r.get("lilly_id"), str) and r["lilly_id"].strip():
