@@ -44,7 +44,6 @@ TRUNCATE_COLS = [
     "simplified_secondary_outcome",
     "conditions",
     "interventions",
-    "study_title",
 ]
 
 TRUNCATE_LENGTH = 200   # matching old version for now, need to change
