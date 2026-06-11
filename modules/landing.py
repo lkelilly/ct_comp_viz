@@ -297,7 +297,10 @@ def landing_server(input, output, session,
             query_intr=input.query_intr_land(),
             query_term=input.query_term_land(),
             query_locn=input.query_locn_land(),
-            query_titles="", query_spons="", query_id="", query_outc="",
+            query_titles=input.query_titles() or "",
+            query_spons=input.query_spons() or "",
+            query_id=input.query_id() or "",
+            query_outc=input.query_outc() or "",
             filter_phase=_safe_list(input.filter_phase),
             filter_status=(
                 input.filter_status().split("|")
@@ -337,6 +340,10 @@ def landing_server(input, output, session,
     @reactive.effect
     @reactive.event(input.btn_run)
     async def _on_run():
+        _spons  = input.query_spons()  or ""
+        _titles = input.query_titles() or ""
+        _id     = input.query_id()     or ""
+        _outc   = input.query_outc()   or ""
         filter_snapshot.set({
             "filter_phase":           _safe_list(input.filter_phase),
             "filter_status":          _safe_val(input.filter_status),
@@ -393,10 +400,14 @@ def landing_server(input, output, session,
                 ui.update_select("sort_order",                selected=snap["sort_order"])
             if snap.get("max_results") is not None:
                 ui.update_numeric("max_results",              value=snap["max_results"])
-            ui.update_text("query_cond", value=input.query_cond_land())
-            ui.update_text("query_intr", value=input.query_intr_land())
-            ui.update_text("query_term", value=input.query_term_land())
-            ui.update_text("query_locn", value=input.query_locn_land())
+            ui.update_text("query_cond",   value=input.query_cond_land())
+            ui.update_text("query_intr",   value=input.query_intr_land())
+            ui.update_text("query_term",   value=input.query_term_land())
+            ui.update_text("query_locn",   value=input.query_locn_land())
+            ui.update_text("query_spons",  value=_spons)
+            ui.update_text("query_titles", value=_titles)
+            ui.update_text("query_id",     value=_id)
+            ui.update_text("query_outc",   value=_outc)
 
     # ── Back button ───────────────────────────────────────────────────────────
 
@@ -407,6 +418,10 @@ def landing_server(input, output, session,
         ui.update_text("query_intr_land", value=input.query_intr())
         ui.update_text("query_term_land", value=input.query_term())
         ui.update_text("query_locn_land", value=input.query_locn())
+        ui.update_text("query_spons",     value=input.query_spons()  or "")
+        ui.update_text("query_titles",    value=input.query_titles() or "")
+        ui.update_text("query_id",        value=input.query_id()     or "")
+        ui.update_text("query_outc",      value=input.query_outc()   or "")
         log_entries.set(log_entries.get() + [
             (datetime.now().strftime("%H:%M:%S"), "info", "Returned to search page.")
         ])
