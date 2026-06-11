@@ -11,6 +11,7 @@ Shared constants used across all files.
 TRIAL_TABLE_LABELS = {
     "nct_number":                 "NCT Number",
     "acronym":                    "Acronym",
+    "compound":                   "Compound",
     "study_title":                "Study Title",
     "conditions":                 "Conditions",
     "interventions":              "Interventions",
@@ -23,8 +24,10 @@ TRIAL_TABLE_LABELS = {
     "study_type":                 "Study Type",
     "study_results":              "Results",
     "brief_summary":              "Brief Summary",
-    "primary_outcome_measures":   "Primary Outcomes",
-    "secondary_outcome_measures": "Secondary Outcomes",
+    "primary_outcome_measures":          "Primary Outcome Measures",
+    "secondary_outcome_measures":        "Secondary Outcome Measures",
+    "simplified_primary_outcome":        "Simplified Primary Outcome",
+    "simplified_secondary_outcome":      "Simplified Secondary Outcome",
     "sponsor":                    "Sponsor",
     "funder_type":                "Funder Type",
 }
@@ -37,9 +40,10 @@ TRUNCATE_COLS = [
     "brief_summary",
     "primary_outcome_measures",
     "secondary_outcome_measures",
+    "simplified_primary_outcome",
+    "simplified_secondary_outcome",
     "conditions",
     "interventions",
-    "study_title",
 ]
 
 TRUNCATE_LENGTH = 200   # matching old version for now, need to change

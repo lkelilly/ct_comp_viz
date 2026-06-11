@@ -121,7 +121,7 @@ def server(input, output, session):
                 p.set(1, message="Processing data", detail="Mapping indications...")
                 await asyncio.sleep(0)
                 p.set(2, message="Processing data", detail="Adding compound information...")
-                df = process_raw_ctgov(df)
+                df = process_raw_ctgov(df, query_intr=kwargs.get("query_intr") or "")
                 p.set(4, message="Processing data", detail="Done")
                 await asyncio.sleep(0)
 

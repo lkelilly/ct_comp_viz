@@ -1,24 +1,4 @@
 {
-  "priority": [
-    "Heart Failure",
-    "ASCVD CVOT",
-    "Atrial Fibrillation",
-    "Kidney Disease",
-    "Chronic Weight Management",
-    "Type 2 Diabetes",
-    "Type 1 Diabetes",
-    "Hypertension",
-    "Dyslipidemia",
-    "NASH/NAFLD",
-    "Obstructive Sleep Apnea",
-    "Knee OA",
-    "Alcohol-related Liver Disease",
-    "Peripheral Arterial Disease",
-    "Diabetic Retinopathy",
-    "Alzheimer's Disease",
-    "Pharmacology/PK",
-    "Healthy Volunteer"
-  ],
   "synonyms": {
     "Heart Failure": [
       "Heart Failure",
@@ -28,16 +8,20 @@
       "Congestive Heart Failure",
       "Cardiac Failure"
     ],
-    "ASCVD CVOT": [
+    "CVOT": [
       "Cardiovascular Disease",
       "Cardiovascular Diseases",
       "Cardiovascular Outcome",
+      "Cardiovascular Outcomes",
       "CVD",
+      "Stroke"
+    ],
+    "ASCVD CVOT": [
       "Coronary Artery Disease",
       "Coronary Atherosclerosis",
       "Atherosclerosis",
+      "Arteriosclerosis",
       "Myocardial Infarction",
-      "Stroke",
       "Unstable Angina",
       "Major Adverse Cardiovascular",
       "MACE"
@@ -102,13 +86,27 @@
       "Arterial Hypertension",
       "Essential Hypertension"
     ],
-    "Dyslipidemia": [
-      "Dyslipidemia",
-      "Dyslipidaemia",
+    "HoFH": [
+      "Familial Hypercholesterolemia - Homozygous",
+      "Homozygous Familial Hypercholesterolemia",
+      "Homozygous Familial Hypercholesterolemia (HoFH)",
+      "HoFH"
+    ],
+    "HeFH": [
+      "Familial Hypercholesterolemia - Heterozygous",
+      "Heterozygous Familial Hypercholesterolemia",
+      "Heterozygous Familial Hypercholesterolemia (HeFH)",
+      "HeFH"
+    ],
+    "Hyperlipidemia": [
       "Hyperlipidemia",
       "Hyperlipidaemia",
       "Hypercholesterolemia",
-      "Hypercholesterolaemia",
+      "Hypercholesterolaemia"
+    ],
+    "Dyslipidemia": [
+      "Dyslipidemia",
+      "Dyslipidaemia",
       "High LDL",
       "Elevated LDL",
       "Mixed Dyslipidemia"
@@ -171,5 +169,89 @@
       "Healthy Participants",
       "Healthy Adults"
     ]
-  }
+  },
+  "overrides": [
+    {
+      "when_base_label": "Hyperlipidemia",
+      "if_title_contains": [
+        "homozygous familial hypercholesterolemia",
+        "familial hypercholesterolemia - homozygous",
+        "hofh"
+      ],
+      "then_label": "HoFH"
+    },
+    {
+      "when_base_label": "Hyperlipidemia",
+      "if_title_contains": [
+        "heterozygous familial hypercholesterolemia",
+        "familial hypercholesterolemia - heterozygous",
+        "hefh"
+      ],
+      "then_label": "HeFH"
+    },
+    {
+      "when_base_label": "Hyperlipidemia",
+      "if_outcome_contains": [
+        "ldl-c",
+        "low-density lipoprotein cholesterol",
+        "ldl cholesterol",
+        "low density lipoprotein"
+      ],
+      "if_secondary_outcome_contains": [
+        "ldl-c",
+        "ldl-lowering",
+        "low-density lipoprotein cholesterol",
+        "ldl cholesterol",
+        "low density lipoprotein"
+      ],
+      "then_label": "LDL-C lowering"
+    },
+    {
+      "when_base_label": "CVOT",
+      "if_outcome_contains": [
+        "ldl-c",
+        "low-density lipoprotein cholesterol",
+        "ldl cholesterol",
+        "low density lipoprotein"
+      ],
+      "if_secondary_outcome_contains": [
+        "ldl-c",
+        "ldl-lowering",
+        "low-density lipoprotein cholesterol",
+        "ldl cholesterol",
+        "low density lipoprotein"
+      ],
+      "then_label": "LDL-C lowering"
+    },
+    {
+      "when_base_label": "ASCVD CVOT",
+      "if_outcome_contains": [
+        "ldl-c",
+        "low-density lipoprotein cholesterol",
+        "ldl cholesterol",
+        "low density lipoprotein"
+      ],
+      "if_secondary_outcome_contains": [
+        "ldl-c",
+        "ldl-lowering",
+        "low-density lipoprotein cholesterol",
+        "ldl cholesterol",
+        "low density lipoprotein"
+      ],
+      "then_label": "LDL-C lowering"
+    },
+    {
+      "if_title_contains": ["cardiovascular outcomes"],
+      "then_label": "CVOT"
+    },
+    {
+      "if_outcome_contains": [
+        "major adverse cardiovascular event",
+        "3p-mace",
+        "3-point major adverse cardiovascular",
+        "coronary heart disease (chd) death"
+      ],
+      "then_label": "CVOT"
+    }
+  ]
 }
