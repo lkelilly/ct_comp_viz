@@ -14,6 +14,7 @@ from modules.landing       import primary_boxes, study_status_widget, more_filte
 from modules.trial_info    import trial_info_ui
 from modules.trial_summary import trial_summary_ui
 from modules.compare       import compare_ui
+from modules.viz           import viz_ui
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -49,19 +50,6 @@ filter_sidebar = ui.sidebar(
 
 # ── Tabs that haven't been moved to modules yet ───────────────────────────────
 
-tab_viz = ui.nav_panel(
-    "Visualization",
-    ui.div(
-        ui.h4("Timeline"),
-        ui.p("Gantt chart will render here.", style="color:#aaa;"),
-        style=(
-            "height:60vh; display:flex; flex-direction:column; align-items:center;"
-            " justify-content:center; border:2px dashed #ddd; border-radius:8px; margin:1rem;"
-        ),
-    ),
-)
-
-
 tab_console = ui.nav_panel(
     "Console",
     ui.div(
@@ -89,7 +77,7 @@ tab_console = ui.nav_panel(
 # ── Main layout ───────────────────────────────────────────────────────────────
 
 main_layout = ui.page_navbar(
-    tab_viz,
+    viz_ui(),
     trial_info_ui(),
     trial_summary_ui(),
     compare_ui(),
@@ -107,6 +95,10 @@ app_ui = ui.page_fluid(
         ui.tags.style("""
             body { font-family: 'Inter', sans-serif; margin: 0; }
             .bslib-sidebar-layout { height: 100vh; }
+            /* Only disable scroll on the outermost bslib layout */
+            .bslib-sidebar-layout:not(.bslib-sidebar-layout .bslib-sidebar-layout) {
+                overflow: hidden !important;
+            }
             .accordion-button { font-size: .85rem; }
             .shiny-input-checkboxgroup,
             .shiny-input-radiogroup { margin-bottom: .25rem; }

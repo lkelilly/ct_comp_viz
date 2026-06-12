@@ -9,22 +9,18 @@
       "Cardiac Failure"
     ],
     "CVOT": [
-      "Cardiovascular Disease",
-      "Cardiovascular Diseases",
       "Cardiovascular Outcome",
       "Cardiovascular Outcomes",
       "CVD",
-      "Stroke"
+      "Stroke" 
     ],
     "ASCVD CVOT": [
+      "Cardiovascular Disease",
+      "Cardiovascular Diseases",
       "Coronary Artery Disease",
       "Coronary Atherosclerosis",
       "Atherosclerosis",
-      "Arteriosclerosis",
-      "Myocardial Infarction",
-      "Unstable Angina",
-      "Major Adverse Cardiovascular",
-      "MACE"
+      "Arteriosclerosis"
     ],
     "Atrial Fibrillation": [
       "Atrial Fibrillation",
