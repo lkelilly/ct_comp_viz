@@ -31,6 +31,7 @@ from modules.landing        import landing_server
 from modules.trial_info     import trial_info_server
 from modules.trial_summary  import trial_summary_server
 from modules.compare        import compare_server
+from modules.viz            import viz_server
 
 
 def server(input, output, session):
@@ -228,6 +229,11 @@ def server(input, output, session):
         elif upload_data.get() is not None:
             ui.update_action_button("btn_rerun", label="Apply Filters")
 
+    @reactive.effect
+    def _toggle_sidebar_for_viz():
+        tab = input.main_navbar()
+        ui.update_sidebar("main_sidebar", show=(tab != "Visualization"))
+
     # ── Console log ───────────────────────────────────────────────────────────
 
     @output
@@ -280,3 +286,4 @@ def server(input, output, session):
     trial_info_server(input, output, session, active_data=active_data)
     trial_summary_server(input, output, session, active_data=active_data)
     compare_server(input, output, session, active_data=active_data, compare_data=compare_data, log_fn=_log)
+    viz_server(input, output, session, active_data=active_data)

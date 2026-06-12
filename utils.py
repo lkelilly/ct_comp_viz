@@ -14,6 +14,9 @@ import re
 from indication_mapping import map_indication, _SYNONYM_RULES
 
 
+_PLACEBO_RE = re.compile(r'^\s*placebo\b', re.IGNORECASE)
+
+
 def _get(d, *path, default=None):
     """Safely walk a nested dict path."""
     node = d
@@ -49,10 +52,12 @@ def _match_compound(interventions_str: str, query_intr: str = "") -> str:
     raw_parts = [p.strip() for p in re.split(r'\s*\|\s*', interventions_str) if p.strip()]
     parts = [re.sub(r'^[A-Z_]+:\s*', '', p) for p in raw_parts]
     parts = [p for p in parts if p]
+    parts = [p for p in parts if not _PLACEBO_RE.match(p)]
     if not parts:
-        return ""
+        return "Only Placebo Found"
     if not query_intr or not query_intr.strip():
-        return parts[0]
+        first_token = parts[0].split()[0]
+        return first_token.title()
 
     if re.search(r'\bOR\b', query_intr, re.IGNORECASE):
         # OR logic: find which candidate term matches this study's interventions
@@ -289,7 +294,7 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "") -> pd.DataFrame:
     if date_cols:
         df = df.dropna(subset=date_cols, how="all")
 
-    # ── Step 2: Derive Lilly compound ID (backend only) ──────────────────────
+    # ── Step 2: Derive Lilly compound ID (not displayed in `trail info`) ──────────────────────
     if "other_ids" in df.columns and "sponsor" in df.columns:
         def _get_lilly_id(row):
             if row["sponsor"] != "Eli Lilly and Company":
@@ -327,7 +332,7 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "") -> pd.DataFrame:
         def _map_row(row):
             first_cond = row.get("first_condition") or ""
             if not first_cond:
-                first_cond = str(row.get("conditions") or "").split(" | ")[0].strip()
+                first_cond = re.split(r'\s*\|\s*', str(row.get("conditions") or ""))[0].strip()
             # Use simplified outcomes for matching if available, fall back to full
             outcome     = row.get("simplified_primary_outcome") or row.get("primary_outcome_measures") or ""
             title       = row.get("study_title") or ""
