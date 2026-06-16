@@ -289,7 +289,7 @@ def viz_server(input, output, session, active_data):
             )
 
         with ui.Progress(min=0, max=3) as p:
-            p.set(0, message="Building visualization", detail="Preparing data…")
+            p.set(0, message="Building visualization", detail="Preparing data...")
 
             bar_w_mult    = _safe_input(input, "viz_bar_width",  100) / 100
             font_mult     = _safe_input(input, "viz_font_size",  100) / 100
@@ -338,7 +338,7 @@ def viz_server(input, output, session, active_data):
             data_px = int(total_rows * row_px * height_mult)
             fig_height = max(300, data_px, legend_px)
 
-            p.set(1, message="Building visualization", detail="Drawing chart…")
+            p.set(1, message="Building visualization", detail="Drawing chart...")
 
             fig = go.Figure()
 
@@ -366,7 +366,7 @@ def viz_server(input, output, session, active_data):
                     y0=group_end - 0.62,
                     y1=group_end - 0.38,
                     fillcolor="white",
-                    layer="above",
+                    layer="below",
                     line_width=0,
                 )
                 fig.add_hline(y=group_end - 0.5, line=dict(color="#cccccc", width=1))
@@ -382,7 +382,7 @@ def viz_server(input, output, session, active_data):
                 font=dict(size=12 * font_mult, color="black"),
             )
 
-            p.set(2, message="Building visualization", detail="Adding trial bands…")
+            p.set(2, message="Building visualization", detail="Adding trial bands...")
 
             # ── Study bars ────────────────────────────────────────────────────────
             legend_seen = set()
@@ -533,7 +533,7 @@ def viz_server(input, output, session, active_data):
                 (date_min - pd.DateOffset(months=6)).strftime("%Y-%m-%d"),
                 (date_max + pd.DateOffset(months=6)).strftime("%Y-%m-%d"),
             ]
-            x_dtick = "M60" if year_span > 30 else "M12"
+            x_dtick = "M60" if year_span > 30 else "M36" if year_span >= 24 else "M12"
 
             fig.update_xaxes(
                 type="date",
@@ -553,11 +553,15 @@ def viz_server(input, output, session, active_data):
                 ticktext=tick_text,
                 tickfont=dict(size=base_font),
                 showgrid=False,
-                autorange="reversed",
+                zeroline=False,
+                autorange=False,
+                range=[total_rows, -1.0],
                 ticklabelstandoff=20,
             )
+            p.set(3, message="Rendering", detail="This won't take too long...")
+            html = fig.to_html(full_html=False, include_plotlyjs="cdn", config={"responsive": True})
 
-        return ui.HTML(fig.to_html(full_html=False, include_plotlyjs="cdn", config={"responsive": True},))
+        return ui.HTML(html)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

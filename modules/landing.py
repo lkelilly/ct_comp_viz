@@ -22,9 +22,9 @@ from shiny import reactive, render, ui
 def primary_boxes(suffix=""):
     s = suffix
     return [
-        ui.input_text(f"query_cond{s}", "Condition/disease",      placeholder="placeholder"),
-        ui.input_text(f"query_term{s}", "Other terms",            placeholder="placeholder"),
-        ui.input_text(f"query_intr{s}", "Intervention/treatment", placeholder="e.g. tirzepatide"),
+        ui.input_text(f"query_cond{s}", "Condition/disease",      placeholder="e.g. Type 2 Diabetes"),
+        ui.input_text(f"query_term{s}", "Other terms",            placeholder="NCT Number, Drug Name, etc."),
+        ui.input_text(f"query_intr{s}", "Intervention/treatment", placeholder="e.g. Tirzepatide"),
         ui.input_text(f"query_other_id{s}", "Alternative compound name",
                       placeholder="e.g. LY3819469"),
         ui.input_text(f"query_locn{s}", "Location",
@@ -116,7 +116,7 @@ def more_filters_widgets():
         ui.hr(style="margin:.5rem 0;"),
         ui.p("Additional search fields",
              style="font-weight:600; font-size:.85rem; margin-bottom:.25rem;"),
-        ui.input_text("query_spons",  "Sponsor/collaborator", placeholder="e.g. Eli Lilly"),
+        ui.input_text("query_spons",  "Sponsor/collaborator", placeholder="e.g. Eli Lilly and Company"),
         ui.input_text("query_titles", "Title/acronym",        placeholder="e.g. SURMOUNT"),
         ui.input_text("query_id",     "NCT/study ID",         placeholder="e.g. NCT04184622"),
         ui.input_text("query_outc",   "Outcome measure",      placeholder="e.g. HbA1c"),
@@ -169,7 +169,7 @@ def landing_page_ui():
                         ),
                         ui.div(
                             ui.input_text("query_term_land", "Other terms",
-                                          placeholder="Anything to narrow down the search"),
+                                          placeholder="NCT number, Drug Name, etc."),
                             ui.input_text("query_locn_land", "Location",
                                           placeholder="Address, city, state, zip code, or country"),
                         ),

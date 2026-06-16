@@ -114,6 +114,9 @@ app_ui = ui.page_fluid(
             }
             .shiny-input-checkboxgroup .checkbox,
             .shiny-input-radiogroup .radio { margin: 0; padding-left: 0; }
+            @media (max-width: 1519px) {
+                #viz_plot .ytick text { display: none; }
+            }
         """)
     ),
     ui.output_ui("active_view"),
