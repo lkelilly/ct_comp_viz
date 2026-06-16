@@ -93,6 +93,10 @@ def compare_server(input, output, session, active_data, compare_data, log_fn):
         if df is None or (isinstance(df, pd.DataFrame) and df.empty):
             yield ""
             return
-        buf = io.StringIO()
-        df.to_csv(buf, index=False)
+        df = df.copy()
+        date_cols = [c for c in ("start_date", "primary_completion_date", "completion_date") if c in df.columns]
+        for col in date_cols:
+            df[col] = pd.to_datetime(df[col], errors="coerce").dt.strftime("%Y-%m-%d")
+        buf = io.BytesIO()
+        df.to_csv(buf, index=False, encoding="utf-8-sig")
         yield buf.getvalue()

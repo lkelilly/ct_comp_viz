@@ -10,6 +10,7 @@ Owns:
           filter snapshot/restore
 """
 
+import asyncio
 import re
 from datetime import datetime
 
@@ -24,12 +25,14 @@ def primary_boxes(suffix=""):
         ui.input_text(f"query_cond{s}", "Condition/disease",      placeholder="placeholder"),
         ui.input_text(f"query_term{s}", "Other terms",            placeholder="placeholder"),
         ui.input_text(f"query_intr{s}", "Intervention/treatment", placeholder="e.g. tirzepatide"),
+        ui.input_text(f"query_other_id{s}", "Alternative compound name",
+                      placeholder="e.g. LY3819469"),
         ui.input_text(f"query_locn{s}", "Location",
                       placeholder="Address, city, state, zip code, or country"),
     ]
 
 
-def study_status_widget():
+def study_status_widget(inline=False):
     return ui.input_radio_buttons(
         "filter_status", "Study Status",
         choices={
@@ -38,6 +41,7 @@ def study_status_widget():
                 "Recruiting and not yet recruiting studies",
         },
         selected="",
+        inline=inline,
     )
 
 
@@ -155,35 +159,76 @@ def landing_page_ui():
             ui.h6("QUERY CLINICALTRIALS.GOV",
                   style="letter-spacing:.08em; color:#aaa; font-size:.75rem; margin-bottom:.6rem;"),
             ui.div(
-                ui.layout_columns(
-                    ui.div(
-                        ui.input_text("query_cond_land", "Condition/disease",
-                                      placeholder="placeholder"),
-                        ui.input_text("query_intr_land", "Intervention/treatment",
-                                      placeholder="e.g. tirzepatide"),
+                ui.div(
+                    ui.layout_columns(
+                        ui.div(
+                            ui.input_text("query_cond_land", "Condition/disease",
+                                          placeholder="e.g. Type 2 Diabetes"),
+                            ui.input_text("query_intr_land", "Intervention/treatment",
+                                          placeholder="e.g. Tirzepatide"),
+                        ),
+                        ui.div(
+                            ui.input_text("query_term_land", "Other terms",
+                                          placeholder="Anything to narrow down the search"),
+                            ui.input_text("query_locn_land", "Location",
+                                          placeholder="Address, city, state, zip code, or country"),
+                        ),
+                        col_widths=[6, 6],
                     ),
-                    ui.div(
-                        ui.input_text("query_term_land", "Other terms",
-                                      placeholder="placeholder"),
-                        ui.input_text("query_locn_land", "Location",
-                                      placeholder="Address, city, state, zip code, or country"),
+                    ui.layout_columns(
+                        ui.div(
+                            ui.input_checkbox("include_other_id_land", "Include alternative compound name", value=False),
+                            style="display:flex; align-items:center;",
+                        ),
+                        ui.panel_conditional(
+                            "input.include_other_id_land",
+                            ui.input_text(
+                                "query_other_id_land", None,
+                                placeholder="e.g. LY3819469, LY3473329",
+                            ),
+                        ),
+                        col_widths=[6, 6],
                     ),
-                    col_widths=[6, 6],
+                    ui.layout_columns(
+                        study_status_widget(inline=True),
+                        col_widths=[12],
+                    ),
+                    style="display:flex; flex-direction:column; gap:0;",
                 ),
-                study_status_widget(),
                 style="border:2px solid #e8e8e8; border-radius:8px; padding:1.25rem;",
             ),
 
-            ui.accordion(
-                ui.accordion_panel(
-                    "More Filters",
-                    ui.layout_columns(
-                        ui.div(*more_filters_widgets()[:28]),
-                        ui.div(*more_filters_widgets()[28:]),
-                        col_widths=[6, 6],
+            ui.tags.style("""
+              #landing_accordion .accordion-button {
+                font-size: 1rem;
+                font-weight: 600;
+              }
+              .shiny-input-container:has(#query_intr_land),
+              .shiny-input-container:has(#query_locn_land),
+              .shiny-input-container:has(#include_other_id_land) {
+                margin-bottom: 0 !important;
+              }
+              .shiny-input-container:has(#filter_status) {
+                margin-top: 0 !important;
+                margin-bottom: 0 !important;
+              }
+            """),
+            ui.div(
+                ui.accordion(
+                    ui.accordion_panel(
+                        "More Filters",
+                        ui.layout_columns(
+                            ui.div(*more_filters_widgets()[:28]),
+                            ui.div(*more_filters_widgets()[28:]),
+                            col_widths=[6, 6],
+                        ),
                     ),
+                    open=[], id="landing_accordion",
                 ),
-                open=[], id="landing_accordion",
+                style=(
+                    "border:2px solid #e8e8e8; border-radius:8px; overflow:hidden;"
+                    " margin-top:.75rem;"
+                ),
             ),
 
             ui.hr(style="margin:1.75rem 0;"),
@@ -295,6 +340,8 @@ def landing_server(input, output, session,
         return dict(
             query_cond=input.query_cond_land(),
             query_intr=input.query_intr_land(),
+            query_other_id=(input.query_other_id_land()
+                            if _safe_val(input.include_other_id_land) else ""),
             query_term=input.query_term_land(),
             query_locn=input.query_locn_land(),
             query_titles=input.query_titles() or "",
@@ -364,7 +411,10 @@ def landing_server(input, output, session,
             "max_results":            _safe_val(input.max_results),
         })
 
+        is_loading.set(True)
+        load_progress.set((0, 0))
         success = await run_fetch_fn(_query_kwargs_from_land())
+        await asyncio.sleep(0)
         if success:
             show_main.set(True)
             snap = filter_snapshot.get()
@@ -400,9 +450,11 @@ def landing_server(input, output, session,
                 ui.update_select("sort_order",                selected=snap["sort_order"])
             if snap.get("max_results") is not None:
                 ui.update_numeric("max_results",              value=snap["max_results"])
-            ui.update_text("query_cond",   value=input.query_cond_land())
-            ui.update_text("query_intr",   value=input.query_intr_land())
-            ui.update_text("query_term",   value=input.query_term_land())
+            ui.update_text("query_cond",     value=input.query_cond_land())
+            ui.update_text("query_intr",     value=input.query_intr_land())
+            ui.update_text("query_other_id", value=input.query_other_id_land()
+                           if _safe_val(input.include_other_id_land) else "")
+            ui.update_text("query_term",     value=input.query_term_land())
             ui.update_text("query_locn",   value=input.query_locn_land())
             ui.update_text("query_spons",  value=_spons)
             ui.update_text("query_titles", value=_titles)

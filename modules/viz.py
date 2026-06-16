@@ -13,6 +13,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from shiny import reactive, render, ui
 
+MAX_VIZ_TRIALS = 300
 
 # ── Enrollment bucket thresholds (mirrors R reference) ───────────────────────
 
@@ -125,6 +126,7 @@ def viz_ui():
         ui.layout_sidebar(
             sidebar,
             ui.div(
+                ui.output_ui("viz_notice"),
                 ui.output_ui("viz_plot"),
                 style="overflow-y:auto; overflow-x:auto; padding:.5rem; width:100%;",
             ),
@@ -199,6 +201,9 @@ def viz_server(input, output, session, active_data):
 
         # Drop rows without required dates
         df = df.dropna(subset=["start_date", "completion_date"])
+        df["start_date"] = pd.to_datetime(df["start_date"])
+        df["completion_date"] = pd.to_datetime(df["completion_date"])
+        df = df[df["completion_date"] > df["start_date"]]  # drop zero/negative-duration trials
 
         sort_by  = _safe_input(input, "viz_sort_by",  "indication")
         group_by = _safe_input(input, "viz_group_by", "compound")
@@ -213,7 +218,43 @@ def viz_server(input, output, session, active_data):
         valid_sort = [c for c in sort_cols if c in df.columns]
         return df.sort_values(valid_sort).reset_index(drop=True)
 
+    @reactive.calc
+    def viz_dropped_count():
+        df = active_data()
+        if df is None or df.empty:
+            return 0
+        compounds   = list(input.viz_compound())   if _input_exists(input, "viz_compound")   else []
+        indications = list(input.viz_indication())  if _input_exists(input, "viz_indication") else []
+        phases      = list(input.viz_phase())       if _input_exists(input, "viz_phase")      else []
+        if compounds:
+            df = df[df["compound"].isin(compounds)]
+        if indications:
+            df = df[df["indication"].isin(indications)]
+        if phases:
+            df = df[df["phases"].isin(phases)]
+        before = len(df)
+        df = df.dropna(subset=["start_date", "completion_date"])
+        df["start_date"] = pd.to_datetime(df["start_date"])
+        df["completion_date"] = pd.to_datetime(df["completion_date"])
+        df = df[df["completion_date"] > df["start_date"]]
+        return before - len(df)
+
     # ── Plot ──────────────────────────────────────────────────────────────────
+
+    @output
+    @render.ui
+    def viz_notice():
+        dropped = viz_dropped_count()
+        if dropped <= 0:
+            return ui.div()
+        return ui.div(
+            ui.tags.i(class_="bi bi-info-circle", style="margin-right:.4rem;"),
+            f"{dropped:,} trial{'s' if dropped != 1 else ''} not displayed due to missing or invalid start/end date.",
+            style=(
+                "background:#fff8e1; border:1px solid #ffe082; border-radius:6px;"
+                " padding:.5rem .75rem; font-size:.8rem; color:#7b6000; margin-bottom:.5rem;"
+            ),
+        )
 
     @output
     @render.ui
@@ -229,243 +270,292 @@ def viz_server(input, output, session, active_data):
                 ),
             )
 
-        bar_w_mult    = _safe_input(input, "viz_bar_width",  100) / 100
-        font_mult     = _safe_input(input, "viz_font_size",  100) / 100
-        height_mult   = _safe_input(input, "viz_fig_height", 100) / 100
-        color_by      = _safe_input(input, "viz_color_by",   "indication")
-        group_by      = _safe_input(input, "viz_group_by",   "compound")
-        reflect_size  = _safe_input(input, "viz_reflect_size",  "yes") == "yes"
-        mark_primary  = _safe_input(input, "viz_mark_primary",  "yes") == "yes"
-        mark_acronym  = _safe_input(input, "viz_mark_acronym",  "yes") == "yes"
-
-        group_col = group_by
-
-        # Assign stable colors to the chosen color-by column
-        color_col  = color_by
-        categories = sorted(df[color_col].dropna().unique().tolist())
-        color_map  = {cat: _INDICATION_COLORS[i % len(_INDICATION_COLORS)]
-                      for i, cat in enumerate(categories)}
-
-        # ── Build integer y-positions + group axis labels ─────────────────────
-        y_pos       = {}   # nct → int
-        y_cursor    = 0
-        group_items = []   # (label, group_start, group_end)
-
-        groups = df[group_col].dropna().unique().tolist()
-        for grp_val in groups:
-            sub         = df[df[group_col] == grp_val]
-            group_start = y_cursor
-            for nct in sub["nct_number"]:
-                if nct not in y_pos:
-                    y_pos[nct] = y_cursor
-                    y_cursor  += 1
-            group_end = y_cursor
-            group_items.append((grp_val, group_start, group_end))
-
-        total_rows = y_cursor
-        row_px     = 32 * bar_w_mult
-        fig_height = max(300, int(total_rows * row_px * height_mult))
-
-        fig = go.Figure()
-
-        # ── Background bands + group column annotations ───────────────────────
-        for idx, (grp_val, group_start, group_end) in enumerate(group_items):
-            fig.add_hrect(
-                y0=group_start - 0.5,
-                y1=group_end   - 0.5,
-                layer="below",
-                line_width=0,
-            )
-            mid = (group_start + group_end - 1) / 2
-            fig.add_annotation(
-                x=-0.25, y=mid,
-                xref="paper", yref="y",
-                text=f"<b>{grp_val}</b>",
-                showarrow=False,
-                xanchor="right",
-                yanchor="middle",
-                font=dict(size=11 * font_mult, color="#333"),
+        n = len(df)
+        if n > MAX_VIZ_TRIALS:
+            return ui.div(
+                ui.h5("Too many trials to render",
+                      style="color:#c0392b; margin-bottom:.5rem;"),
+                ui.p(
+                    f"{n:,} trials match your current filters. The visualization supports up to "
+                    f"{MAX_VIZ_TRIALS:,} at a time. Please narrow your search using the filters "
+                    "on the left (compound, indication, phase) or tighten the sidebar filters.",
+                    style="color:#555; max-width:520px; text-align:center;",
+                ),
+                style=(
+                    "height:40vh; display:flex; flex-direction:column; align-items:center;"
+                    " justify-content:center; border:2px dashed #e74c3c; border-radius:8px;"
+                    " margin:1rem; background:#fff8f8;"
+                ),
             )
 
-        for _, _, group_end in group_items[:-1]:
-            fig.add_hrect(
-                y0=group_end - 0.62,
-                y1=group_end - 0.38,
-                fillcolor="white",
-                layer="above",
-                line_width=0,
-            )
-            fig.add_hline(y=group_end - 0.5, line=dict(color="#cccccc", width=1))
+        with ui.Progress(min=0, max=3) as p:
+            p.set(0, message="Building visualization", detail="Preparing data…")
 
-        group_label = _COL_LABELS.get(group_col, group_col.capitalize())
-        fig.add_annotation(
-            x=-0.25, y=-0.7,
-            xref="paper", yref="y",
-            text=f"Group by: <b>{group_label}</b>",
-            showarrow=False,
-            xanchor="right",
-            yanchor="bottom",
-            font=dict(size=12 * font_mult, color="black"),
-        )
+            bar_w_mult    = _safe_input(input, "viz_bar_width",  100) / 100
+            font_mult     = _safe_input(input, "viz_font_size",  100) / 100
+            height_mult   = _safe_input(input, "viz_fig_height", 100) / 100
+            color_by      = _safe_input(input, "viz_color_by",   "indication")
+            group_by      = _safe_input(input, "viz_group_by",   "compound")
+            reflect_size  = _safe_input(input, "viz_reflect_size",  "yes") == "yes"
+            mark_primary  = _safe_input(input, "viz_mark_primary",  "yes") == "yes"
+            mark_acronym  = _safe_input(input, "viz_mark_acronym",  "yes") == "yes"
 
-        # ── Study bars ────────────────────────────────────────────────────────
-        legend_seen = set()
+            group_col = group_by
 
-        # Legend anchor traces — enforce fixed order via legendrank
-        if mark_primary:
-            fig.add_trace(go.Scatter(
-                x=[None], y=[None], mode="markers",
-                marker=dict(symbol="triangle-up", size=10 * font_mult, color="black"),
-                name="Primary Completion Date",
-                legendgroup="__primary__",
-                showlegend=True,
-                legendrank=1,
-            ))
-            legend_seen.add("__primary__")
+            # Assign stable colors to the chosen color-by column
+            color_col  = color_by
+            categories = sorted(df[color_col].dropna().unique().tolist())
+            color_map  = {cat: _INDICATION_COLORS[i % len(_INDICATION_COLORS)]
+                          for i, cat in enumerate(categories)}
 
-        color_section_title = _COL_LABELS.get(color_by, color_by.capitalize())
-        fig.add_trace(go.Scatter(
-            x=[None], y=[None], mode="markers",
-            marker=dict(size=0, opacity=0),
-            name=f"Color by: <b>{color_section_title}</b>",
-            legendgroup="__header_colors__",
-            showlegend=True,
-            legendrank=99,
-        ))
+            # ── Build integer y-positions + group axis labels ─────────────────────
+            y_pos       = {}   # nct → int
+            y_cursor    = 0
+            group_items = []   # (label, group_start, group_end)
 
-        for i, cat in enumerate(categories):
-            fig.add_trace(go.Scatter(
-                x=[None], y=[None], mode="lines",
-                line=dict(color=color_map[cat], width=8),
-                name=cat,
-                legendgroup=cat,
-                showlegend=True,
-                legendrank=100 + i,
-            ))
-            legend_seen.add(cat)
+            groups = df[group_col].dropna().unique().tolist()
+            for grp_val in groups:
+                sub         = df[df[group_col] == grp_val]
+                group_start = y_cursor
+                for nct in sub["nct_number"]:
+                    if nct not in y_pos:
+                        y_pos[nct] = y_cursor
+                        y_cursor  += 1
+                group_end = y_cursor
+                group_items.append((grp_val, group_start, group_end))
 
-        if reflect_size:
-            fig.add_trace(go.Scatter(
-                x=[None], y=[None], mode="markers",
-                marker=dict(size=0, opacity=0),
-                name=f"<b>Enrollment Size</b>",
-                legendgroup="__header_enroll__",
-                showlegend=True,
-                legendrank=199,
-            ))
-            for i, (_, _, label, width) in enumerate(_ENROLLMENT_BUCKETS):
-                fig.add_trace(go.Scatter(
-                    x=[None], y=[None], mode="lines",
-                    line=dict(color="#888888", width=width * bar_w_mult),
-                    name=label,
-                    legendgroup=f"__enroll_{label}__",
-                    showlegend=True,
-                    legendrank=200 + i,
-                ))
+            total_rows = y_cursor
+            row_px = 32 * bar_w_mult
+            n_legend = 0
+            if mark_primary:
+                n_legend += 1
+            n_legend += 1
+            n_legend += len(categories)
+            if reflect_size:
+                n_legend += 1 + len(_ENROLLMENT_BUCKETS)
+            legend_px = int(n_legend * 22 * font_mult + 60)   # ~22px per row + padding
 
-        for _, trial in df.iterrows():
-            nct       = trial.get("nct_number", "")
-            y_val     = y_pos.get(nct, 0)
-            cat       = trial.get(color_col, "Other") or "Other"
-            color     = color_map.get(cat, "#888888")
-            acronym   = trial.get("acronym", nct)
-            title     = str(trial.get("study_title", ""))[:120]
-            phase     = trial.get("phases", "")
-            indication = trial.get("indication", "")
-            status    = trial.get("study_status", "")
-            enroll    = trial.get("enrollment", None)
-            t_start   = trial.get("start_date")
-            t_end     = trial.get("completion_date")
-            t_primary = trial.get("primary_completion_date")
+            data_px = int(total_rows * row_px * height_mult)
+            fig_height = max(300, data_px, legend_px)
 
-            enroll_label = _enrollment_label(enroll)
-            lw = _enrollment_linewidth(enroll_label, bar_w_mult) if reflect_size else 12 * bar_w_mult
+            p.set(1, message="Building visualization", detail="Drawing chart…")
 
-            hover = (
-                f"<b>{nct}</b><br>"
-                f"Acronym: {acronym}<br>"
-                f"Title: {title}{'…' if len(str(trial.get('study_title', ''))) > 120 else ''}<br>"
-                f"Compound: {trial.get('compound', '')}<br>"
-                f"Indication: {indication}<br>"
-                f"Phase: {phase}<br>"
-                f"Status: {status}<br>"
-                f"Enrollment: {int(enroll) if pd.notna(enroll) else 'N/A'}<br>"
-                f"Start: {_fmt_date(t_start)}<br>"
-                f"Primary completion: {_fmt_date(t_primary)}<br>"
-                f"Completion: {_fmt_date(t_end)}"
-            )
+            fig = go.Figure()
 
-            fig.add_trace(go.Scatter(
-                x=[t_start, t_end],
-                y=[y_val, y_val],
-                mode="lines",
-                line=dict(color=color, width=lw),
-                name=cat,
-                legendgroup=cat,
-                showlegend=False,
-                hovertemplate=hover + "<extra></extra>",
-            ))
-
-            if mark_primary and pd.notna(t_primary):
-                fig.add_trace(go.Scatter(
-                    x=[t_primary],
-                    y=[y_val],
-                    mode="markers",
-                    marker=dict(symbol="triangle-up", size=10 * font_mult, color="black"),
-                    name="Primary Completion",
-                    legendgroup="__primary__",
-                    showlegend=False,
-                    hovertemplate=f"Primary completion: {_fmt_date(t_primary)}<extra></extra>",
-                ))
-                legend_seen.add("__primary__")
-
-            # Right-side label: acronym only (if enabled and differs from NCT)
-            if mark_acronym and acronym != nct:
+            # ── Background bands + group column annotations ───────────────────────
+            for idx, (grp_val, group_start, group_end) in enumerate(group_items):
+                fig.add_hrect(
+                    y0=group_start - 0.5,
+                    y1=group_end   - 0.5,
+                    layer="below",
+                    line_width=0,
+                )
+                mid = (group_start + group_end - 1) / 2
                 fig.add_annotation(
-                    x=t_end,
-                    y=y_val,
-                    text=f"  {acronym}",
+                    x=-0.25, y=mid,
+                    xref="paper", yref="y",
+                    text=f"<b>{grp_val}</b>",
                     showarrow=False,
-                    xanchor="left",
+                    xanchor="right",
+                    yanchor="middle",
                     font=dict(size=11 * font_mult, color="#333"),
                 )
 
-        base_font = 12 * font_mult
-        fig.update_layout(
-            height=fig_height,
-            autosize=True,
-            font=dict(size=base_font),
-            hovermode="closest",
-            legend=dict(
-                orientation="v",
-                x=1.01,
-                y=1,
-                yanchor="top",
+            for _, _, group_end in group_items[:-1]:
+                fig.add_hrect(
+                    y0=group_end - 0.62,
+                    y1=group_end - 0.38,
+                    fillcolor="white",
+                    layer="above",
+                    line_width=0,
+                )
+                fig.add_hline(y=group_end - 0.5, line=dict(color="#cccccc", width=1))
+
+            group_label = _COL_LABELS.get(group_col, group_col.capitalize())
+            fig.add_annotation(
+                x=-0.25, y=-0.7,
+                xref="paper", yref="y",
+                text=f"Group by: <b>{group_label}</b>",
+                showarrow=False,
+                xanchor="right",
+                yanchor="bottom",
+                font=dict(size=12 * font_mult, color="black"),
+            )
+
+            p.set(2, message="Building visualization", detail="Adding trial bands…")
+
+            # ── Study bars ────────────────────────────────────────────────────────
+            legend_seen = set()
+
+            # Legend anchor traces — enforce fixed order via legendrank
+            if mark_primary:
+                fig.add_trace(go.Scatter(
+                    x=[None], y=[None], mode="markers",
+                    marker=dict(symbol="triangle-up", size=10 * font_mult, color="black"),
+                    name="Primary Completion Date",
+                    legendgroup="__primary__",
+                    showlegend=True,
+                    legendrank=1,
+                ))
+                legend_seen.add("__primary__")
+
+            color_section_title = _COL_LABELS.get(color_by, color_by.capitalize())
+            fig.add_trace(go.Scatter(
+                x=[None], y=[None], mode="markers",
+                marker=dict(size=0, opacity=0),
+                name=f"Color by: <b>{color_section_title}</b>",
+                legendgroup="__header_colors__",
+                showlegend=True,
+                legendrank=99,
+            ))
+
+            for i, cat in enumerate(categories):
+                fig.add_trace(go.Scatter(
+                    x=[None], y=[None], mode="lines",
+                    line=dict(color=color_map[cat], width=8),
+                    name=cat,
+                    legendgroup=cat,
+                    showlegend=True,
+                    legendrank=100 + i,
+                ))
+                legend_seen.add(cat)
+
+            if reflect_size:
+                fig.add_trace(go.Scatter(
+                    x=[None], y=[None], mode="markers",
+                    marker=dict(size=0, opacity=0),
+                    name=f"<b>Enrollment Size</b>",
+                    legendgroup="__header_enroll__",
+                    showlegend=True,
+                    legendrank=199,
+                ))
+                for i, (_, _, label, width) in enumerate(_ENROLLMENT_BUCKETS):
+                    fig.add_trace(go.Scatter(
+                        x=[None], y=[None], mode="lines",
+                        line=dict(color="#888888", width=width * bar_w_mult),
+                        name=label,
+                        legendgroup=f"__enroll_{label}__",
+                        showlegend=True,
+                        legendrank=200 + i,
+                    ))
+
+            for _, trial in df.iterrows():
+                nct       = trial.get("nct_number", "")
+                y_val     = y_pos.get(nct, 0)
+                cat       = trial.get(color_col, "Other") or "Other"
+                color     = color_map.get(cat, "#888888")
+                acronym   = trial.get("acronym", nct)
+                title     = str(trial.get("study_title", ""))[:120]
+                phase     = trial.get("phases", "")
+                indication = trial.get("indication", "")
+                status    = trial.get("study_status", "")
+                enroll    = trial.get("enrollment", None)
+                t_start   = trial.get("start_date")
+                t_end     = trial.get("completion_date")
+                t_primary = trial.get("primary_completion_date")
+
+                enroll_label = _enrollment_label(enroll)
+                lw = _enrollment_linewidth(enroll_label, bar_w_mult) if reflect_size else 12 * bar_w_mult
+
+                hover = (
+                    f"<b>{nct}</b><br>"
+                    f"Acronym: {acronym}<br>"
+                    f"Title: {title}{'…' if len(str(trial.get('study_title', ''))) > 120 else ''}<br>"
+                    f"Compound: {trial.get('compound', '')}<br>"
+                    f"Indication: {indication}<br>"
+                    f"Phase: {phase}<br>"
+                    f"Status: {status}<br>"
+                    f"Enrollment: {int(enroll) if pd.notna(enroll) else 'N/A'}<br>"
+                    f"Start: {_fmt_date(t_start)}<br>"
+                    f"Primary completion: {_fmt_date(t_primary)}<br>"
+                    f"Completion: {_fmt_date(t_end)}"
+                )
+
+                _pts = pd.date_range(t_start, t_end, periods=20).tolist() if pd.notna(t_start) and pd.notna(t_end) else [t_start, t_end]
+                fig.add_trace(go.Scatter(
+                    x=_pts,
+                    y=[y_val] * len(_pts),
+                    mode="lines",
+                    line=dict(color=color, width=lw),
+                    name=cat,
+                    legendgroup=cat,
+                    showlegend=False,
+                    hovertemplate=hover + "<extra></extra>",
+                ))
+
+                if mark_primary and pd.notna(t_primary):
+                    fig.add_trace(go.Scatter(
+                        x=[t_primary],
+                        y=[y_val],
+                        mode="markers",
+                        marker=dict(symbol="triangle-up", size=10 * font_mult, color="black"),
+                        name="Primary Completion",
+                        legendgroup="__primary__",
+                        showlegend=False,
+                        hovertemplate=f"Primary completion: {_fmt_date(t_primary)}<extra></extra>",
+                    ))
+                    legend_seen.add("__primary__")
+
+                # Right-side label: acronym only (if enabled and differs from NCT)
+                if mark_acronym and acronym != nct:
+                    fig.add_annotation(
+                        x=t_end,
+                        y=y_val,
+                        text=f"  {acronym}",
+                        showarrow=False,
+                        xanchor="left",
+                        font=dict(size=11 * font_mult, color="#333"),
+                    )
+
+            p.set(3, message="Building visualization", detail="Adding details...")
+
+            base_font = 12 * font_mult
+            fig.update_layout(
+                height=fig_height,
+                autosize=True,
                 font=dict(size=base_font),
-            ),
-            margin=dict(l=350, r=220, t=50, b=60),
-            plot_bgcolor="#ffffff",
-            paper_bgcolor="#ffffff",
-        )
-        fig.update_xaxes(
-            type="date",
-            tickformat="%Y",
-            dtick="M12",
-            tickangle=45,
-            tickfont=dict(size=base_font),
-            showgrid=True,
-            gridcolor="#e0e0e0",
-            gridwidth=1,
-        )
-        tick_vals = list(y_pos.values())
-        tick_text = list(y_pos.keys())
-        fig.update_yaxes(
-            tickvals=tick_vals,
-            ticktext=tick_text,
-            tickfont=dict(size=base_font),
-            showgrid=False,
-            autorange="reversed",
-        )
+                hovermode="closest",
+                legend=dict(
+                    orientation="v",
+                    x=1.05,
+                    y=1,
+                    yanchor="top",
+                    font=dict(size=base_font),
+                ),
+                margin=dict(l=350, r=220, t=50, b=60),
+                plot_bgcolor="#ffffff",
+                paper_bgcolor="#ffffff",
+            )
+            date_min = pd.to_datetime(df["start_date"]).min()
+            date_max = pd.to_datetime(df["completion_date"]).max()
+            year_span = (date_max - date_min).days / 365.25
+            x_range = [
+                (date_min - pd.DateOffset(months=6)).strftime("%Y-%m-%d"),
+                (date_max + pd.DateOffset(months=6)).strftime("%Y-%m-%d"),
+            ]
+            x_dtick = "M60" if year_span > 30 else "M12"
+
+            fig.update_xaxes(
+                type="date",
+                range=x_range,
+                tickformat="%Y",
+                dtick=x_dtick,
+                tickangle=45,
+                tickfont=dict(size=base_font),
+                showgrid=True,
+                gridcolor="#e0e0e0",
+                gridwidth=1,
+            )
+            tick_vals = list(y_pos.values())
+            tick_text = list(y_pos.keys())
+            fig.update_yaxes(
+                tickvals=tick_vals,
+                ticktext=tick_text,
+                tickfont=dict(size=base_font),
+                showgrid=False,
+                autorange="reversed",
+                ticklabelstandoff=20,
+            )
 
         return ui.HTML(fig.to_html(full_html=False, include_plotlyjs="cdn", config={"responsive": True},))
 

@@ -16,6 +16,17 @@ from indication_mapping import map_indication, _SYNONYM_RULES
 
 _PLACEBO_RE = re.compile(r'^\s*placebo\b', re.IGNORECASE)
 
+_MASTER_PROTOCOL_KEYWORDS = ["master protocol", "platform trial", "platform study", "umbrella study"]
+
+
+def _is_isa_master_protocol(title: str, primary_outcome_text: str) -> bool:
+    """Return True if this is a master protocol study with ISA in the primary outcome."""
+    title_lower = (title or "").lower()
+    if not any(kw in title_lower for kw in _MASTER_PROTOCOL_KEYWORDS):
+        return False
+    # ISA must appear as an exact uppercase token (not case-insensitive)
+    return bool(re.search(r'\bISA\b', primary_outcome_text or ""))
+
 
 def _get(d, *path, default=None):
     """Safely walk a nested dict path."""
@@ -180,6 +191,9 @@ def _extract_study(study: dict) -> dict:
     simplified_primary_str  = _join_outcomes(primary_raw)
     simplified_secondary_str = _join_outcomes(secondary_raw)
 
+    if _is_isa_master_protocol(title, simplified_primary_str):
+        simplified_primary_str = primary_str
+
     # Sponsor
     lead_sponsor = _get(sponsor_mod, "leadSponsor", "name",  default="")
     funder_type  = _get(sponsor_mod, "leadSponsor", "class", default="")
@@ -328,27 +342,50 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "") -> pd.DataFrame:
         df["acronym"] = df.apply(_resolve_acronym, axis=1)
 
     # ── Step 4: Derive indication ─────────────────────────────────────────────
-    if "conditions" in df.columns:
-        def _map_row(row):
-            first_cond = row.get("first_condition") or ""
-            if not first_cond:
-                first_cond = re.split(r'\s*\|\s*', str(row.get("conditions") or ""))[0].strip()
-            # Use simplified outcomes for matching if available, fall back to full
-            outcome     = row.get("simplified_primary_outcome") or row.get("primary_outcome_measures") or ""
-            title       = row.get("study_title") or ""
-            sec_outcome = row.get("simplified_secondary_outcome") or row.get("secondary_outcome_measures") or ""
-            return map_indication(first_cond, outcome, title, sec_outcome)
-        df["indication"] = df.apply(_map_row, axis=1)
-    else:
-        df["indication"] = "Other"
+    _indication_present = (
+        "indication" in df.columns
+        and df["indication"].notna().any()
+        and df["indication"].astype(str).str.strip().ne("").any()
+    )
+    if not _indication_present:
+        if "conditions" in df.columns:
+            def _map_row(row):
+                conds = row.get("conditions") or row.get("first_condition") or ""
+                # Use simplified outcomes for matching if available, fall back to full
+                outcome     = row.get("simplified_primary_outcome") or row.get("primary_outcome_measures") or ""
+                title       = row.get("study_title") or ""
+                sec_outcome = row.get("simplified_secondary_outcome") or row.get("secondary_outcome_measures") or ""
+                return map_indication(conds, outcome, title, sec_outcome)
+            df["indication"] = df.apply(_map_row, axis=1)
+        else:
+            df["indication"] = "Other"
+
+    # ── Step 4a: ISA master-protocol — revert simplified outcome to full text ──
+    if "simplified_primary_outcome" in df.columns and "study_title" in df.columns:
+        isa_mask = df.apply(
+            lambda r: _is_isa_master_protocol(
+                r.get("study_title", ""),
+                r.get("simplified_primary_outcome", "")
+            ), axis=1
+        )
+        if isa_mask.any():
+            full_col = df.get("primary_outcome_measures") if "primary_outcome_measures" in df.columns else None
+            if full_col is not None:
+                df.loc[isa_mask, "simplified_primary_outcome"] = full_col[isa_mask].fillna("")
 
     # ── Step 5: Derive compound from interventions ────────────────────────────
-    if "interventions" in df.columns:
-        df["compound"] = df["interventions"].apply(
-            lambda x: _match_compound(x, query_intr)
-        )
-    else:
-        df["compound"] = ""
+    _compound_present = (
+        "compound" in df.columns
+        and df["compound"].notna().any()
+        and df["compound"].astype(str).str.strip().ne("").any()
+    )
+    if not _compound_present:
+        if "interventions" in df.columns:
+            df["compound"] = df["interventions"].apply(
+                lambda x: _match_compound(x, query_intr)
+            )
+        else:
+            df["compound"] = ""
 
     return df
 
