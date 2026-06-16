@@ -8,19 +8,13 @@
       "Congestive Heart Failure",
       "Cardiac Failure"
     ],
-    "CVOT": [
-      "Cardiovascular Outcome",
-      "Cardiovascular Outcomes",
-      "CVD",
-      "Stroke" 
-    ],
-    "ASCVD CVOT": [
-      "Cardiovascular Disease",
-      "Cardiovascular Diseases",
+    "ASCVD": [
       "Coronary Artery Disease",
       "Coronary Atherosclerosis",
+      "Atherosclerotic Cardiovascular Disease",
       "Atherosclerosis",
-      "Arteriosclerosis"
+      "Arteriosclerosis",
+      "ASCVD"
     ],
     "Atrial Fibrillation": [
       "Atrial Fibrillation",
@@ -54,6 +48,11 @@
       "Weight Management",
       "Overweight and Obesity",
       "Chronic Weight Management"
+    ],
+    "Diabetic Peripheral Neuropathy": [
+      "Diabetic Peripheral Neuropathy",
+      "Peripheral Diabetic Neuropathy",
+      "DPN"
     ],
     "Type 2 Diabetes": [
       "Type 2 Diabetes",
@@ -166,6 +165,35 @@
       "Healthy Adults"
     ]
   },
+  "priority_rules": {
+    "t2d_endpoint_terms": ["hba1c"],
+    "cwm_endpoint_terms": [
+      "body weight",
+      "weight loss",
+      "weight reduction",
+      "weight change",
+      "body weight change"
+    ],
+    "cvot_mace_terms": [
+      "major adverse cardiovascular event",
+      "mace",
+      "3p-mace",
+      "3-point major adverse cardiovascular",
+      "coronary heart disease (chd) death"
+    ],
+    "cvot_outcome_synonyms": [
+      "cardiovascular outcome",
+      "cardiovascular outcomes"
+    ],
+    "ascvd_condition_terms": [
+      "coronary artery",
+      "atherosclerotic cardiovascular disease",
+      "atherosclerotic cardiovascular",
+      "ascvd",
+      "atherosclerosis",
+      "arteriosclerosis"
+    ]
+  },
   "overrides": [
     {
       "when_base_label": "Hyperlipidemia",
@@ -203,50 +231,7 @@
       "then_label": "LDL-C lowering"
     },
     {
-      "when_base_label": "CVOT",
-      "if_outcome_contains": [
-        "ldl-c",
-        "low-density lipoprotein cholesterol",
-        "ldl cholesterol",
-        "low density lipoprotein"
-      ],
-      "if_secondary_outcome_contains": [
-        "ldl-c",
-        "ldl-lowering",
-        "low-density lipoprotein cholesterol",
-        "ldl cholesterol",
-        "low density lipoprotein"
-      ],
-      "then_label": "LDL-C lowering"
-    },
-    {
-      "when_base_label": "ASCVD CVOT",
-      "if_outcome_contains": [
-        "ldl-c",
-        "low-density lipoprotein cholesterol",
-        "ldl cholesterol",
-        "low density lipoprotein"
-      ],
-      "if_secondary_outcome_contains": [
-        "ldl-c",
-        "ldl-lowering",
-        "low-density lipoprotein cholesterol",
-        "ldl cholesterol",
-        "low density lipoprotein"
-      ],
-      "then_label": "LDL-C lowering"
-    },
-    {
       "if_title_contains": ["cardiovascular outcomes"],
-      "then_label": "CVOT"
-    },
-    {
-      "if_outcome_contains": [
-        "major adverse cardiovascular event",
-        "3p-mace",
-        "3-point major adverse cardiovascular",
-        "coronary heart disease (chd) death"
-      ],
       "then_label": "CVOT"
     }
   ]

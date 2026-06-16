@@ -32,6 +32,7 @@ class CTGovNetworkError(Exception):
 async def fetch_studies(
     query_cond=None,   query_intr=None,  query_term=None,   query_titles=None,
     query_spons=None,  query_locn=None,  query_id=None,     query_outc=None,
+    query_other_id=None,
     filter_phase=None,       filter_status=None,    filter_study_type=None,
     filter_funder=None,      filter_sex=None,       filter_healthy=False,
     filter_results=None,     filter_age_min=None,   filter_age_max=None,
@@ -51,7 +52,7 @@ async def fetch_studies(
 
     params = _build_params(
         query_cond, query_intr, query_term, query_titles,
-        query_spons, query_locn, query_id, query_outc,
+        query_spons, query_locn, query_id, query_outc, query_other_id,
         filter_phase, filter_status, filter_study_type, filter_funder,
         filter_sex, filter_healthy, filter_results,
         filter_age_min, filter_age_max,
@@ -163,7 +164,7 @@ def _get(params):
 
 def _build_params(
     query_cond, query_intr, query_term, query_titles,
-    query_spons, query_locn, query_id, query_outc,
+    query_spons, query_locn, query_id, query_outc, query_other_id,
     filter_phase, filter_status, filter_study_type, filter_funder,
     filter_sex, filter_healthy, filter_results,
     filter_age_min, filter_age_max,
@@ -182,7 +183,6 @@ def _build_params(
         params["sort"] = sort_order
 
     _add_text(params, "query.cond",   query_cond)
-    _add_text(params, "query.intr",   query_intr)
     _add_text(params, "query.term",   query_term)
     _add_text(params, "query.titles", query_titles)
     _add_text(params, "query.spons",  query_spons)
@@ -196,6 +196,17 @@ def _build_params(
             params["filter.overallStatus"] = "|".join(active)
 
     adv = []
+
+    _intr  = query_intr.strip()  if (query_intr  and query_intr.strip())  else ""
+    _alts  = [o.strip() for o in query_other_id.replace(",", " ").split() if o.strip()] \
+             if (query_other_id and query_other_id.strip()) else []
+
+    if _intr and _alts:
+        _add_text(params, "query.intr", " OR ".join([_intr] + _alts))
+    elif _intr:
+        _add_text(params, "query.intr", _intr)
+    elif _alts:
+        _add_text(params, "query.intr", " OR ".join(_alts))
 
     if filter_phase:
         active = [p for p in filter_phase if p]

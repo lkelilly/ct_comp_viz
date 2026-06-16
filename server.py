@@ -175,6 +175,7 @@ def server(input, output, session):
         kwargs = dict(
             query_cond=_safe_val(input.query_cond),
             query_intr=_safe_val(input.query_intr),
+            query_other_id=_safe_val(input.query_other_id) or "",
             query_term=_safe_val(input.query_term),
             query_locn=_safe_val(input.query_locn),
             query_titles=_safe_val(input.query_titles),

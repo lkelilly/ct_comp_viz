@@ -94,6 +94,7 @@ app_ui = ui.page_fluid(
     ui.head_content(
         ui.tags.style("""
             body { font-family: 'Inter', sans-serif; margin: 0; }
+            body:has(#viz_sidebar) #viz_sidebar ~ .main { overflow: hidden !important; }
             .bslib-sidebar-layout { height: 100vh; }
             /* Only disable scroll on the outermost bslib layout */
             .bslib-sidebar-layout:not(.bslib-sidebar-layout .bslib-sidebar-layout) {
@@ -113,6 +114,9 @@ app_ui = ui.page_fluid(
             }
             .shiny-input-checkboxgroup .checkbox,
             .shiny-input-radiogroup .radio { margin: 0; padding-left: 0; }
+            @media (max-width: 1519px) {
+                #viz_plot .ytick text { display: none; }
+            }
         """)
     ),
     ui.output_ui("active_view"),
