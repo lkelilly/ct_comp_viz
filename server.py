@@ -14,7 +14,6 @@ Owns:
 """
 
 import asyncio
-import re
 import time
 from datetime import datetime
 
@@ -24,7 +23,7 @@ from itables import to_html_datatable
 from shiny import reactive, render, ui
 
 from ct_api import fetch_studies, CTGovAPIError, CTGovNetworkError
-from utils  import studies_to_dataframe, read_uploaded_csv, process_raw_ctgov, filter_upload_data
+from utils  import studies_to_dataframe, read_uploaded_csv, process_raw_ctgov, filter_upload_data, _valid_date
 from ui     import main_layout
 
 from modules.landing        import landing_server
@@ -43,7 +42,7 @@ def server(input, output, session):
 
     api_data        = reactive.Value(None)
     upload_data     = reactive.Value(None)
-    upload_data_raw = reactive.Value(None)   # original upload; never overwritten after set
+    upload_data_raw = reactive.Value(None)   # original upload; no overwritten after set
     compare_data    = reactive.Value(None)
     api_error       = reactive.Value(None)
     filter_snapshot = reactive.Value({})
@@ -147,61 +146,39 @@ def server(input, output, session):
 
     # ── Re-run from sidebar ───────────────────────────────────────────────────
 
-    def _safe_list(fn):
-        try:
-            v = fn()
-            return list(v) if v else []
-        except Exception:
-            return []
-
-    def _safe_val(fn):
-        try:
-            return fn()
-        except Exception:
-            return None
-
-    def _safe_date(fn):
-        try:
-            v = fn()
-            if v and re.match(r"^\d{4}-\d{2}-\d{2}$", str(v).strip()):
-                return str(v).strip()
-        except Exception:
-            pass
-        return None
-
     @reactive.effect
     @reactive.event(input.btn_rerun)
     async def _on_rerun():
         kwargs = dict(
-            query_cond=_safe_val(input.query_cond),
-            query_intr=_safe_val(input.query_intr),
-            query_other_id=_safe_val(input.query_other_id) or "",
-            query_term=_safe_val(input.query_term),
-            query_locn=_safe_val(input.query_locn),
-            query_titles=_safe_val(input.query_titles),
-            query_spons=_safe_val(input.query_spons),
-            query_id=_safe_val(input.query_id),
-            query_outc=_safe_val(input.query_outc),
-            filter_phase=_safe_list(input.filter_phase),
+            query_cond=input.query_cond(),
+            query_intr=input.query_intr(),
+            query_other_id=input.query_other_id() or "",
+            query_term=input.query_term(),
+            query_locn=input.query_locn(),
+            query_titles=input.query_titles(),
+            query_spons=input.query_spons(),
+            query_id=input.query_id(),
+            query_outc=input.query_outc(),
+            filter_phase=list(input.filter_phase()) if input.filter_phase() else [],
             filter_status=(
                 input.filter_status().split("|")
-                if _safe_val(input.filter_status) else []
+                if input.filter_status() else []
             ),
-            filter_study_type=_safe_list(input.filter_study_type),
-            filter_funder=_safe_list(input.filter_funder),
-            filter_sex=_safe_val(input.filter_sex),
-            filter_healthy=_safe_val(input.filter_healthy),
-            filter_results=_safe_val(input.filter_results),
-            filter_age_min=_safe_val(input.filter_age_min),
-            filter_age_max=_safe_val(input.filter_age_max),
-            filter_enroll_min=_safe_val(input.filter_enroll_min),
-            filter_enroll_max=_safe_val(input.filter_enroll_max),
-            filter_start_from=_safe_date(input.filter_start_from),
-            filter_start_to=_safe_date(input.filter_start_to),
-            filter_completion_from=_safe_date(input.filter_completion_from),
-            filter_completion_to=_safe_date(input.filter_completion_to),
-            sort_order=_safe_val(input.sort_order),
-            max_results=int(_safe_val(input.max_results) or 500),
+            filter_study_type=list(input.filter_study_type()) if input.filter_study_type() else [],
+            filter_funder=list(input.filter_funder()) if input.filter_funder() else [],
+            filter_sex=input.filter_sex(),
+            filter_healthy=input.filter_healthy(),
+            filter_results=input.filter_results(),
+            filter_age_min=input.filter_age_min(),
+            filter_age_max=input.filter_age_max(),
+            filter_enroll_min=input.filter_enroll_min(),
+            filter_enroll_max=input.filter_enroll_max(),
+            filter_start_from=_valid_date(input.filter_start_from()),
+            filter_start_to=_valid_date(input.filter_start_to()),
+            filter_completion_from=_valid_date(input.filter_completion_from()),
+            filter_completion_to=_valid_date(input.filter_completion_to()),
+            sort_order=input.sort_order(),
+            max_results=int(input.max_results() or 500),
         )
 
         if api_data.get() is not None:

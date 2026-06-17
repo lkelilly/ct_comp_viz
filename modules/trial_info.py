@@ -27,7 +27,7 @@ def trial_info_server(input, output, session, active_data):
     @render.ui
     def trial_table():
         df = active_data()
-        if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+        if df is None or df.empty:
             return ui.p("No data loaded. Run a query first.",
                         style="color:#aaa; padding:2rem;")
 

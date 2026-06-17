@@ -21,7 +21,7 @@ from modules.viz           import viz_ui
 
 filter_sidebar = ui.sidebar(
     ui.h6("SEARCH & FILTERS",
-          style="letter-spacing:.08em; color:#888; margin-bottom:.75rem; font-size:.75rem;"),
+          style="letter-spacing:.08em; color:#333; margin-bottom:.75rem; font-size:.85rem; font-weight:700;"),
 
     *primary_boxes(suffix=""),
     study_status_widget(),
@@ -31,7 +31,7 @@ filter_sidebar = ui.sidebar(
         open=[], id="sidebar_accordion",
     ),
 
-    ui.hr(),
+    ui.hr(style="margin:.4rem 0;"),
     ui.input_action_button(
         "btn_rerun", "Re-run Query",
         style="width:100%; background:#1a1a2e; color:#fff; border:none; "
@@ -92,8 +92,12 @@ main_layout = ui.page_navbar(
 
 app_ui = ui.page_fluid(
     ui.head_content(
+        ui.tags.link(
+            rel="stylesheet",
+            href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",
+        ),
         ui.tags.style("""
-            body { font-family: 'Inter', sans-serif; margin: 0; }
+            body { font-family: 'Lato', sans-serif; margin: 0; }
             body:has(#viz_sidebar) #viz_sidebar ~ .main { overflow: hidden !important; }
             .bslib-sidebar-layout { height: 100vh; }
             /* Only disable scroll on the outermost bslib layout */

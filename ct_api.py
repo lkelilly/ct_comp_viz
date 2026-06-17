@@ -77,8 +77,6 @@ async def fetch_studies(
     # Run the blocking call in a thread pool
     result_future = loop.run_in_executor(None, _blocking_fetch)
 
-    # While waiting, drain the progress queue and forward to the async callback
-    studies, total = None, None
     error = None
     while True:
         # Drain any progress updates that arrived
@@ -162,6 +160,13 @@ def _get(params):
 
 ## current filters and stuff, subject to change if needed
 
+def _add_adv_filter(adv, items, area_field):
+    active = [x for x in (items or []) if x]
+    if active:
+        expr = " OR ".join(f"AREA[{area_field}]{x}" for x in active)
+        adv.append(f"({expr})" if len(active) > 1 else expr)
+
+
 def _build_params(
     query_cond, query_intr, query_term, query_titles,
     query_spons, query_locn, query_id, query_outc, query_other_id,
@@ -208,23 +213,9 @@ def _build_params(
     elif _alts:
         _add_text(params, "query.intr", " OR ".join(_alts))
 
-    if filter_phase:
-        active = [p for p in filter_phase if p]
-        if active:
-            expr = " OR ".join(f"AREA[Phase]{p}" for p in active)
-            adv.append(f"({expr})" if len(active) > 1 else expr)
-
-    if filter_study_type:
-        active = [t for t in filter_study_type if t]
-        if active:
-            expr = " OR ".join(f"AREA[StudyType]{t}" for t in active)
-            adv.append(f"({expr})" if len(active) > 1 else expr)
-
-    if filter_funder:
-        active = [f for f in filter_funder if f]
-        if active:
-            expr = " OR ".join(f"AREA[LeadSponsorClass]{f}" for f in active)
-            adv.append(f"({expr})" if len(active) > 1 else expr)
+    _add_adv_filter(adv, filter_phase,      "Phase")
+    _add_adv_filter(adv, filter_study_type, "StudyType")
+    _add_adv_filter(adv, filter_funder,     "LeadSponsorClass")
 
     if filter_sex and filter_sex != "All":
         adv.append(f"AREA[Sex]{filter_sex}")

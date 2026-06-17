@@ -1,26 +1,59 @@
 """
 modules/trial_summary.py
 ────────────────────────
-Trial Summary tab — minimal table showing study_title, phases, and indication.
-
-Indication is derived from the `conditions` column via indication_mapping.py.
+Trial Summary tab — one row per compound with aggregated statistics.
 """
 
 import pandas as pd
 from itables import to_html_datatable
 from shiny import render, ui
 
-from indication_mapping import map_indication
+def _build_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate df by compound into one summary row per compound."""
+    df = df.copy()
 
+    ph3 = df[df["phases"] == "PHASE3"].copy()
 
-# Column to display → DataFrame column name
-_DISPLAY_COLS = {
-    "Acronym":     "acronym",
-    "Compound":    "compound",
-    "Study Title": "study_title",
-    "Phase":       "phases",
-    "Indication":  "indication",
-}
+    def _ph3_stats(grp):
+        sub = ph3[ph3["compound"] == grp.name]
+        if sub.empty:
+            return pd.Series({
+                "Number of Ph3 Studies": 0,
+                "First Ph3 Study": None,
+                "First Ph3 Completion Date": None,
+            })
+        idx = sub["primary_completion_date"].idxmin()
+        return pd.Series({
+            "Number of Ph3 Studies": sub["nct_number"].nunique(),
+            "First Ph3 Study": sub.loc[idx, "acronym"],
+            "First Ph3 Completion Date": sub.loc[idx, "primary_completion_date"],
+        })
+
+    base = df.groupby("compound", sort=False).apply(
+        lambda g: pd.Series({
+            "Number of Studies": g["nct_number"].nunique(),
+            "Indications": ", ".join(sorted(g["indication"].dropna().unique())),
+        })
+    ).reset_index()
+
+    ph3_stats = (
+        df.groupby("compound", sort=False)
+        .apply(_ph3_stats)
+        .reset_index()
+    )
+
+    summary = base.merge(ph3_stats, on="compound", how="left")
+    summary = summary.rename(columns={"compound": "Compound"})
+    return summary[
+        [
+            "Compound",
+            "Number of Studies",
+            "Indications",
+            "Number of Ph3 Studies",
+            "First Ph3 Study",
+            "First Ph3 Completion Date",
+        ]
+    ]
 
 
 def trial_summary_ui():
@@ -39,29 +72,14 @@ def trial_summary_server(input, output, session, active_data):
     @render.ui
     def trial_summary_table():
         df = active_data()
-        if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+        if df is None or df.empty:
             return ui.p("No data loaded. Run a query first.",
                         style="color:#aaa; padding:2rem;")
 
-        # indication is already derived by process_raw_ctgov; add fallback for safety
-        df = df.copy()
-        if "indication" not in df.columns:
-            if "conditions" in df.columns:
-                df["indication"] = df["conditions"].apply(map_indication)
-            else:
-                df["indication"] = "Other"
-
-        # Keep only the three display columns that exist
-        cols_to_keep = [
-            col for col in _DISPLAY_COLS.values()
-            if col in df.columns
-        ]
-        df_display = df[cols_to_keep].rename(
-            columns={v: k for k, v in _DISPLAY_COLS.items()}
-        )
+        summary = _build_summary(df)
 
         table_html = to_html_datatable(
-            df_display,
+            summary,
             showIndex=False,
             lengthMenu=[10, 25, 50, 100],
             pageLength=10,

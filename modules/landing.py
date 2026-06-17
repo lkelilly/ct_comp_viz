@@ -11,10 +11,11 @@ Owns:
 """
 
 import asyncio
-import re
 from datetime import datetime
 
 from shiny import reactive, render, ui
+
+from utils import _valid_date
 
 
 # ── Widget factories (used by both landing and ui.py sidebar) ─────────────────
@@ -47,7 +48,7 @@ def study_status_widget(inline=False):
 
 def more_filters_widgets():
     return [
-        ui.p("Age", style="font-weight:600; font-size:.85rem; margin-bottom:.25rem;"),
+        ui.p("Age", style="font-weight:600; font-size: 0.9rem; margin-bottom:.25rem;"),
         ui.layout_columns(
             ui.input_numeric("filter_age_min", "Minimum age (years)", value=None, min=0, max=120),
             ui.input_numeric("filter_age_max", "Maximum age (years)", value=None, min=0, max=120),
@@ -93,21 +94,21 @@ def more_filters_widgets():
             selected="Any", inline=True,
         ),
         ui.hr(style="margin:.5rem 0;"),
-        ui.p("Start date", style="font-weight:600; font-size:.85rem; margin-bottom:.25rem;"),
+        ui.p("Start date", style="font-weight:600; margin-bottom:.25rem;"),
         ui.layout_columns(
             ui.input_text("filter_start_from", "From", placeholder="YYYY-MM-DD"),
             ui.input_text("filter_start_to",   "To",   placeholder="YYYY-MM-DD"),
             col_widths=[6, 6],
         ),
         ui.p("Primary completion date",
-             style="font-weight:600; font-size:.85rem; margin:.5rem 0 .25rem;"),
+             style="font-weight:600; font-size: 0.9rem; margin:.5rem 0 .25rem;"),
         ui.layout_columns(
             ui.input_text("filter_completion_from", "From", placeholder="YYYY-MM-DD"),
             ui.input_text("filter_completion_to",   "To",   placeholder="YYYY-MM-DD"),
             col_widths=[6, 6],
         ),
         ui.hr(style="margin:.5rem 0;"),
-        ui.p("Enrollment size", style="font-weight:600; font-size:.85rem; margin-bottom:.25rem;"),
+        ui.p("Enrollment size", style="font-weight:600; font-size: 0.9rem; margin-bottom:.25rem;"),
         ui.layout_columns(
             ui.input_numeric("filter_enroll_min", "Min", value=None, min=0),
             ui.input_numeric("filter_enroll_max", "Max", value=None, min=0),
@@ -115,12 +116,13 @@ def more_filters_widgets():
         ),
         ui.hr(style="margin:.5rem 0;"),
         ui.p("Additional search fields",
-             style="font-weight:600; font-size:.85rem; margin-bottom:.25rem;"),
+             style="font-weight:600; font-size: 0.9rem; margin-bottom:.25rem;"),
         ui.input_text("query_spons",  "Sponsor/collaborator", placeholder="e.g. Eli Lilly and Company"),
         ui.input_text("query_titles", "Title/acronym",        placeholder="e.g. SURMOUNT"),
         ui.input_text("query_id",     "NCT/study ID",         placeholder="e.g. NCT04184622"),
         ui.input_text("query_outc",   "Outcome measure",      placeholder="e.g. HbA1c"),
         ui.hr(style="margin:.5rem 0;"),
+        ui.p("Sorting", style="font-weight:600; font-size: 0.9rem; margin-bottom:.25rem;"),
         ui.input_select(
             "sort_order", "Sort by",
             choices={
@@ -141,23 +143,22 @@ def more_filters_widgets():
 def landing_page_ui():
     return ui.div(
         ui.div(
-            ui.h2("Test", style="letter-spacing:.15em; margin-bottom:.25rem;"),
+            ui.h2("Test", style="letter-spacing:.15em; margin-bottom:.25rem; font-size:1.75rem; font-weight:700;"),
             ui.p("hello",
                  style="color:#888; margin-bottom:2rem; font-size:.95rem;"),
 
             ui.h6("UPLOAD YOUR OWN DATA",
-                  style="letter-spacing:.08em; color:#aaa; font-size:.75rem; margin-bottom:.6rem;"),
+                  style="letter-spacing:.08em; color:#333; font-size:.85rem; font-weight:700; margin-bottom:.6rem;"),
             ui.div(
                 ui.input_file("upload_file", None, accept=".csv",
                               button_label="Choose CSV", multiple=False),
                 ui.div(ui.output_text("upload_status"),
                        style="font-size:.8rem; color:#888; margin-top:.35rem; min-height:1.1rem;"),
-                style="border:2px dashed #ccc; border-radius:8px; padding:1rem; "
-                      "text-align:center; margin-bottom:1.75rem;",
+                style="padding-top: .2rem; text-align:center; margin-bottom:.2rem;",
             ),
 
             ui.h6("QUERY CLINICALTRIALS.GOV",
-                  style="letter-spacing:.08em; color:#aaa; font-size:.75rem; margin-bottom:.6rem;"),
+                  style="letter-spacing:.08em; color:#333; font-size:.85rem; font-weight:700; margin-bottom:.6rem;"),
             ui.div(
                 ui.div(
                     ui.layout_columns(
@@ -195,7 +196,7 @@ def landing_page_ui():
                     ),
                     style="display:flex; flex-direction:column; gap:0;",
                 ),
-                style="border:2px solid #e8e8e8; border-radius:8px; padding:1.25rem;",
+                style="border:2px solid #e8e8e8; border-radius:8px; padding:1.25rem 1.25rem 0 1.25rem;",
             ),
 
             ui.tags.style("""
@@ -314,60 +315,38 @@ def landing_server(input, output, session,
 
     # ── Safe helpers ──────────────────────────────────────────────────────────
 
-    def _safe_list(fn):
-        try:
-            v = fn()
-            return list(v) if v else []
-        except Exception:
-            return []
-
-    def _safe_val(fn):
-        try:
-            return fn()
-        except Exception:
-            return None
-
-    def _safe_date(fn):
-        try:
-            v = fn()
-            if v and re.match(r"^\d{4}-\d{2}-\d{2}$", str(v).strip()):
-                return str(v).strip()
-        except Exception:
-            pass
-        return None
-
     def _query_kwargs_from_land():
         return dict(
             query_cond=input.query_cond_land(),
             query_intr=input.query_intr_land(),
             query_other_id=(input.query_other_id_land()
-                            if _safe_val(input.include_other_id_land) else ""),
+                            if input.include_other_id_land() else ""),
             query_term=input.query_term_land(),
             query_locn=input.query_locn_land(),
             query_titles=input.query_titles() or "",
             query_spons=input.query_spons() or "",
             query_id=input.query_id() or "",
             query_outc=input.query_outc() or "",
-            filter_phase=_safe_list(input.filter_phase),
+            filter_phase=list(input.filter_phase()) if input.filter_phase() else [],
             filter_status=(
                 input.filter_status().split("|")
-                if _safe_val(input.filter_status) else []
+                if input.filter_status() else []
             ),
-            filter_study_type=_safe_list(input.filter_study_type),
-            filter_funder=_safe_list(input.filter_funder),
-            filter_sex=_safe_val(input.filter_sex),
-            filter_healthy=_safe_val(input.filter_healthy),
-            filter_results=_safe_val(input.filter_results),
-            filter_age_min=_safe_val(input.filter_age_min),
-            filter_age_max=_safe_val(input.filter_age_max),
-            filter_enroll_min=_safe_val(input.filter_enroll_min),
-            filter_enroll_max=_safe_val(input.filter_enroll_max),
-            filter_start_from=_safe_date(input.filter_start_from),
-            filter_start_to=_safe_date(input.filter_start_to),
-            filter_completion_from=_safe_date(input.filter_completion_from),
-            filter_completion_to=_safe_date(input.filter_completion_to),
-            sort_order=_safe_val(input.sort_order),
-            max_results=int(_safe_val(input.max_results) or 500),
+            filter_study_type=list(input.filter_study_type()) if input.filter_study_type() else [],
+            filter_funder=list(input.filter_funder()) if input.filter_funder() else [],
+            filter_sex=input.filter_sex(),
+            filter_healthy=input.filter_healthy(),
+            filter_results=input.filter_results(),
+            filter_age_min=input.filter_age_min(),
+            filter_age_max=input.filter_age_max(),
+            filter_enroll_min=input.filter_enroll_min(),
+            filter_enroll_max=input.filter_enroll_max(),
+            filter_start_from=_valid_date(input.filter_start_from()),
+            filter_start_to=_valid_date(input.filter_start_to()),
+            filter_completion_from=_valid_date(input.filter_completion_from()),
+            filter_completion_to=_valid_date(input.filter_completion_to()),
+            sort_order=input.sort_order(),
+            max_results=int(input.max_results() or 500),
         )
 
     # ── View switcher ─────────────────────────────────────────────────────────
@@ -387,28 +366,24 @@ def landing_server(input, output, session,
     @reactive.effect
     @reactive.event(input.btn_run)
     async def _on_run():
-        _spons  = input.query_spons()  or ""
-        _titles = input.query_titles() or ""
-        _id     = input.query_id()     or ""
-        _outc   = input.query_outc()   or ""
         filter_snapshot.set({
-            "filter_phase":           _safe_list(input.filter_phase),
-            "filter_status":          _safe_val(input.filter_status),
-            "filter_study_type":      _safe_list(input.filter_study_type),
-            "filter_funder":          _safe_list(input.filter_funder),
-            "filter_sex":             _safe_val(input.filter_sex),
-            "filter_healthy":         _safe_val(input.filter_healthy),
-            "filter_results":         _safe_val(input.filter_results),
-            "filter_age_min":         _safe_val(input.filter_age_min),
-            "filter_age_max":         _safe_val(input.filter_age_max),
-            "filter_enroll_min":      _safe_val(input.filter_enroll_min),
-            "filter_enroll_max":      _safe_val(input.filter_enroll_max),
-            "filter_start_from":      _safe_date(input.filter_start_from),
-            "filter_start_to":        _safe_date(input.filter_start_to),
-            "filter_completion_from": _safe_date(input.filter_completion_from),
-            "filter_completion_to":   _safe_date(input.filter_completion_to),
-            "sort_order":             _safe_val(input.sort_order),
-            "max_results":            _safe_val(input.max_results),
+            "filter_phase":           list(input.filter_phase()) if input.filter_phase() else [],
+            "filter_status":          input.filter_status(),
+            "filter_study_type":      list(input.filter_study_type()) if input.filter_study_type() else [],
+            "filter_funder":          list(input.filter_funder()) if input.filter_funder() else [],
+            "filter_sex":             input.filter_sex(),
+            "filter_healthy":         input.filter_healthy(),
+            "filter_results":         input.filter_results(),
+            "filter_age_min":         input.filter_age_min(),
+            "filter_age_max":         input.filter_age_max(),
+            "filter_enroll_min":      input.filter_enroll_min(),
+            "filter_enroll_max":      input.filter_enroll_max(),
+            "filter_start_from":      _valid_date(input.filter_start_from()),
+            "filter_start_to":        _valid_date(input.filter_start_to()),
+            "filter_completion_from": _valid_date(input.filter_completion_from()),
+            "filter_completion_to":   _valid_date(input.filter_completion_to()),
+            "sort_order":             input.sort_order(),
+            "max_results":            input.max_results(),
         })
 
         is_loading.set(True)
@@ -453,13 +428,13 @@ def landing_server(input, output, session,
             ui.update_text("query_cond",     value=input.query_cond_land())
             ui.update_text("query_intr",     value=input.query_intr_land())
             ui.update_text("query_other_id", value=input.query_other_id_land()
-                           if _safe_val(input.include_other_id_land) else "")
+                           if input.include_other_id_land() else "")
             ui.update_text("query_term",     value=input.query_term_land())
             ui.update_text("query_locn",   value=input.query_locn_land())
-            ui.update_text("query_spons",  value=_spons)
-            ui.update_text("query_titles", value=_titles)
-            ui.update_text("query_id",     value=_id)
-            ui.update_text("query_outc",   value=_outc)
+            ui.update_text("query_spons",  value=input.query_spons()  or "")
+            ui.update_text("query_titles", value=input.query_titles() or "")
+            ui.update_text("query_id",     value=input.query_id()     or "")
+            ui.update_text("query_outc",   value=input.query_outc()   or "")
 
     # ── Back button ───────────────────────────────────────────────────────────
 

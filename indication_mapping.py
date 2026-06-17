@@ -194,10 +194,3 @@ def map_indication(conditions_str: str, outcome_str: str = "", title_str: str = 
             return rule["then_label"]
 
     return base_label
-
-
-def reload():
-    """Force a reload of indication-rule.json (speed up)."""
-    global _SYNONYM_RULES, _OVERRIDE_RULES, _PRIORITY_RULES, _SYNONYM_BY_LABEL
-    _SYNONYM_RULES, _OVERRIDE_RULES, _PRIORITY_RULES = _load_rules(_SYNONYMS_PATH)
-    _SYNONYM_BY_LABEL = dict(_SYNONYM_RULES)

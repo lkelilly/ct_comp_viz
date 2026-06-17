@@ -19,6 +19,11 @@ _PLACEBO_RE = re.compile(r'^\s*placebo\b', re.IGNORECASE)
 _MASTER_PROTOCOL_KEYWORDS = ["master protocol", "platform trial", "platform study", "umbrella study"]
 
 
+def _valid_date(v):
+    v = (v or "").strip()
+    return v if re.match(r"^\d{4}-\d{2}-\d{2}$", v) else None
+
+
 def _is_isa_master_protocol(title: str, primary_outcome_text: str) -> bool:
     """Return True if this is a master protocol study with ISA in the primary outcome."""
     title_lower = (title or "").lower()

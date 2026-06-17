@@ -3,10 +3,6 @@ modules/viz.py
 ──────────────
 Visualization tab — Plotly Gantt-style timeline chart.
 
-Layout: nested sidebar inside the nav_panel.
-  Left sidebar:  Trial Filters (compound / indication / phase)
-                 Display Options (color-by, sort-by, toggles, sliders)
-  Main area:     Plotly interactive figure (hover details, grouped by compound)
 """
 
 import pandas as pd
@@ -15,7 +11,7 @@ from shiny import reactive, render, ui
 
 MAX_VIZ_TRIALS = 300
 
-# ── Enrollment bucket thresholds (mirrors R reference) ───────────────────────
+# ── Enrollment bucket thresholds ─────────────────────────────────────────────
 
 _ENROLLMENT_BUCKETS = [
     (None, 100,   "< 100",         4),
@@ -33,7 +29,6 @@ def _enrollment_label(n):
     for lo, hi, label, _ in _ENROLLMENT_BUCKETS:
         if (lo is None or n >= lo) and (hi is None or n < hi):
             return label
-    return "≥ 5000"
 
 def _enrollment_linewidth(label, multiplier=1.0):
     for _, _, lbl, width in _ENROLLMENT_BUCKETS:
@@ -60,7 +55,7 @@ def viz_ui():
     sidebar = ui.sidebar(
         ui.h6(
             "SORTING OPTIONS",
-            style="letter-spacing:.08em; color:#888888; font-size:.75rem;",
+            style="letter-spacing:.08em; color:#333; font-size:.85rem; font-weight:700;",
         ),
         ui.input_radio_buttons(
             "viz_group_by", "Group rows by:",
@@ -83,19 +78,19 @@ def viz_ui():
             selected="start_date",
         ),
 
-        ui.hr(),
+        ui.hr(style="margin:.4rem 0;"),
         ui.h6(
             "TRIAL FILTERS",
-            style="letter-spacing:.08em; color:#888888; margin-bottom:.5rem; font-size:.75rem;",
+            style="letter-spacing:.08em; color:#333; margin-bottom:.5rem; font-size:.85rem; font-weight:700;",
         ),
         ui.output_ui("viz_compound_ui"),
         ui.output_ui("viz_indication_ui"),
         ui.output_ui("viz_phase_ui"),
 
-        ui.hr(),
+        ui.hr(style="margin:.4rem 0;"),
         ui.h6(
             "DISPLAY OPTIONS",
-            style="letter-spacing:.08em; color:#888888; margin-bottom:.5rem; font-size:.75rem;",
+            style="letter-spacing:.08em; color:#333; margin-bottom:.5rem; font-size:.85rem; font-weight:700;",
         ),
         ui.input_radio_buttons(
             "viz_reflect_size", "Bar width reflects enrollment:",
@@ -145,7 +140,7 @@ def viz_server(input, output, session, active_data):
     def viz_compound_ui():
         df = active_data()
         if df is None or df.empty:
-            return ui.p("No data loaded.", style="color:#aaa; font-size:.8rem;")
+            return ui.p("No data loaded.", style="color:#aaa; font-size:1rem;")
         choices = sorted(df["compound"].dropna().unique().tolist())
         return ui.input_checkbox_group(
             "viz_compound", "Compound:",
@@ -182,31 +177,33 @@ def viz_server(input, output, session, active_data):
     # ── Filtered + sorted data ────────────────────────────────────────────────
 
     @reactive.calc
-    def viz_data():
+    def _viz_filtered():
         df = active_data()
         if df is None or df.empty:
-            return pd.DataFrame()
-
-        # Guard: inputs may not exist yet on first render
+            return pd.DataFrame(), 0
         compounds   = list(input.viz_compound())   if _input_exists(input, "viz_compound")   else []
         indications = list(input.viz_indication())  if _input_exists(input, "viz_indication") else []
         phases      = list(input.viz_phase())       if _input_exists(input, "viz_phase")      else []
-
         if compounds:
             df = df[df["compound"].isin(compounds)]
         if indications:
             df = df[df["indication"].isin(indications)]
         if phases:
             df = df[df["phases"].isin(phases)]
-
-        # Drop rows without required dates
+        before = len(df)
         df = df.dropna(subset=["start_date", "completion_date"])
-        df["start_date"] = pd.to_datetime(df["start_date"])
+        df["start_date"]      = pd.to_datetime(df["start_date"])
         df["completion_date"] = pd.to_datetime(df["completion_date"])
-        df = df[df["completion_date"] > df["start_date"]]  # drop zero/negative-duration trials
+        df = df[df["completion_date"] > df["start_date"]]
+        return df, before
 
-        sort_by  = _safe_input(input, "viz_sort_by",  "indication")
-        group_by = _safe_input(input, "viz_group_by", "compound")
+    @reactive.calc
+    def viz_data():
+        df, _ = _viz_filtered()
+        if df.empty:
+            return df
+        sort_by  = input.viz_sort_by()
+        group_by = input.viz_group_by()
         sort_cols = [group_by]
         if sort_by != group_by and sort_by in (
             "start_date", "completion_date", "primary_completion_date", "indication", "phases"
@@ -220,23 +217,7 @@ def viz_server(input, output, session, active_data):
 
     @reactive.calc
     def viz_dropped_count():
-        df = active_data()
-        if df is None or df.empty:
-            return 0
-        compounds   = list(input.viz_compound())   if _input_exists(input, "viz_compound")   else []
-        indications = list(input.viz_indication())  if _input_exists(input, "viz_indication") else []
-        phases      = list(input.viz_phase())       if _input_exists(input, "viz_phase")      else []
-        if compounds:
-            df = df[df["compound"].isin(compounds)]
-        if indications:
-            df = df[df["indication"].isin(indications)]
-        if phases:
-            df = df[df["phases"].isin(phases)]
-        before = len(df)
-        df = df.dropna(subset=["start_date", "completion_date"])
-        df["start_date"] = pd.to_datetime(df["start_date"])
-        df["completion_date"] = pd.to_datetime(df["completion_date"])
-        df = df[df["completion_date"] > df["start_date"]]
+        df, before = _viz_filtered()
         return before - len(df)
 
     # ── Plot ──────────────────────────────────────────────────────────────────
@@ -249,10 +230,10 @@ def viz_server(input, output, session, active_data):
             return ui.div()
         return ui.div(
             ui.tags.i(class_="bi bi-info-circle", style="margin-right:.4rem;"),
-            f"{dropped:,} trial{'s' if dropped != 1 else ''} not displayed due to missing or invalid start/end date.",
+            f"{dropped:,} trial(s) in `Trial Information` not displayed due to missing or invalid start/end date",
             style=(
-                "background:#fff8e1; border:1px solid #ffe082; border-radius:6px;"
-                " padding:.5rem .75rem; font-size:.8rem; color:#7b6000; margin-bottom:.5rem;"
+                "background:#fff8e1; border:1px #ffe082; border-radius:8px;"
+                " padding:.5rem .75rem; font-size:0.85rem; color:#7b6000; margin:0 1rem .5rem 1rem;"
             ),
         )
 
@@ -266,39 +247,39 @@ def viz_server(input, output, session, active_data):
                      style="color:#aaa;"),
                 style=(
                     "height:40vh; display:flex; align-items:center; justify-content:center;"
-                    " border:2px dashed #ddd; border-radius:8px; margin:1rem;"
+                    " border:2px #ddd; border-radius:8px; margin:1rem;"
                 ),
             )
 
         n = len(df)
         if n > MAX_VIZ_TRIALS:
             return ui.div(
-                ui.h5("Too many trials to render",
+                ui.h5("Too many trials to render! :-(",
                       style="color:#c0392b; margin-bottom:.5rem;"),
+                ui.p(f"{n:,} trials match your current filters."),
                 ui.p(
-                    f"{n:,} trials match your current filters. The visualization supports up to "
-                    f"{MAX_VIZ_TRIALS:,} at a time. Please narrow your search using the filters "
-                    "on the left (compound, indication, phase) or tighten the sidebar filters.",
+                    f"The visualization supports up to {MAX_VIZ_TRIALS:,} at a time. "
+                    "Please narrow your search using the filters on the left (compound, indication, etc.).",
                     style="color:#555; max-width:520px; text-align:center;",
                 ),
                 style=(
                     "height:40vh; display:flex; flex-direction:column; align-items:center;"
-                    " justify-content:center; border:2px dashed #e74c3c; border-radius:8px;"
-                    " margin:1rem; background:#fff8f8;"
+                    " justify-content:center; border:2px #e74c3c; border-radius:8px;"
+                    " margin:1rem; padding:.5rem .75rem; background:#fff8f8;"
                 ),
             )
 
         with ui.Progress(min=0, max=3) as p:
             p.set(0, message="Building visualization", detail="Preparing data...")
 
-            bar_w_mult    = _safe_input(input, "viz_bar_width",  100) / 100
-            font_mult     = _safe_input(input, "viz_font_size",  100) / 100
-            height_mult   = _safe_input(input, "viz_fig_height", 100) / 100
-            color_by      = _safe_input(input, "viz_color_by",   "indication")
-            group_by      = _safe_input(input, "viz_group_by",   "compound")
-            reflect_size  = _safe_input(input, "viz_reflect_size",  "yes") == "yes"
-            mark_primary  = _safe_input(input, "viz_mark_primary",  "yes") == "yes"
-            mark_acronym  = _safe_input(input, "viz_mark_acronym",  "yes") == "yes"
+            bar_w_mult   = input.viz_bar_width()  / 100
+            font_mult    = input.viz_font_size()  / 100
+            height_mult  = input.viz_fig_height() / 100
+            color_by     = input.viz_color_by()
+            group_by     = input.viz_group_by()
+            reflect_size = input.viz_reflect_size() == "yes"
+            mark_primary = input.viz_mark_primary() == "yes"
+            mark_acronym = input.viz_mark_acronym() == "yes"
 
             group_col = group_by
 
@@ -352,7 +333,7 @@ def viz_server(input, output, session, active_data):
                 )
                 mid = (group_start + group_end - 1) / 2
                 fig.add_annotation(
-                    x=-0.25, y=mid,
+                    x=-0.2, y=mid,
                     xref="paper", yref="y",
                     text=f"<b>{grp_val}</b>",
                     showarrow=False,
@@ -373,7 +354,7 @@ def viz_server(input, output, session, active_data):
 
             group_label = _COL_LABELS.get(group_col, group_col.capitalize())
             fig.add_annotation(
-                x=-0.25, y=-0.7,
+                x=-0.12, y=-0.7,
                 xref="paper", yref="y",
                 text=f"Group by: <b>{group_label}</b>",
                 showarrow=False,
@@ -385,9 +366,6 @@ def viz_server(input, output, session, active_data):
             p.set(2, message="Building visualization", detail="Adding trial bands...")
 
             # ── Study bars ────────────────────────────────────────────────────────
-            legend_seen = set()
-
-            # Legend anchor traces — enforce fixed order via legendrank
             if mark_primary:
                 fig.add_trace(go.Scatter(
                     x=[None], y=[None], mode="markers",
@@ -397,13 +375,12 @@ def viz_server(input, output, session, active_data):
                     showlegend=True,
                     legendrank=1,
                 ))
-                legend_seen.add("__primary__")
 
-            color_section_title = _COL_LABELS.get(color_by, color_by.capitalize())
+            color_section_title = _COL_LABELS.get(color_by, color_by.capitalize() if color_by else "")
             fig.add_trace(go.Scatter(
                 x=[None], y=[None], mode="markers",
                 marker=dict(size=0, opacity=0),
-                name=f"Color by: <b>{color_section_title}</b>",
+                name=f"Color by: <b>{_wrap_legend_name(color_section_title)}</b>",
                 legendgroup="__header_colors__",
                 showlegend=True,
                 legendrank=99,
@@ -413,12 +390,11 @@ def viz_server(input, output, session, active_data):
                 fig.add_trace(go.Scatter(
                     x=[None], y=[None], mode="lines",
                     line=dict(color=color_map[cat], width=8),
-                    name=cat,
+                    name=_wrap_legend_name(cat),
                     legendgroup=cat,
                     showlegend=True,
                     legendrank=100 + i,
                 ))
-                legend_seen.add(cat)
 
             if reflect_size:
                 fig.add_trace(go.Scatter(
@@ -494,7 +470,6 @@ def viz_server(input, output, session, active_data):
                         showlegend=False,
                         hovertemplate=f"Primary completion: {_fmt_date(t_primary)}<extra></extra>",
                     ))
-                    legend_seen.add("__primary__")
 
                 # Right-side label: acronym only (if enabled and differs from NCT)
                 if mark_acronym and acronym != nct:
@@ -521,8 +496,10 @@ def viz_server(input, output, session, active_data):
                     y=1,
                     yanchor="top",
                     font=dict(size=base_font),
+                    entrywidth=170,
+                    entrywidthmode="pixels",
                 ),
-                margin=dict(l=350, r=220, t=50, b=60),
+                margin=dict(l=260, r=220, t=50, b=60),
                 plot_bgcolor="#ffffff",
                 paper_bgcolor="#ffffff",
             )
@@ -566,8 +543,27 @@ def viz_server(input, output, session, active_data):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _wrap_legend_name(text: str, max_chars: int = 20) -> str:
+    words = str(text).split()
+    lines, current = [], []
+    length = 0
+    for word in words:
+        if current and length + 1 + len(word) > max_chars:
+            lines.append(" ".join(current))
+            current, length = [word], len(word)
+        else:
+            current.append(word)
+            length += (1 if current else 0) + len(word)
+    if current:
+        lines.append(" ".join(current))
+    return "<br>".join(lines)
+
+
 def _fmt_date(d):
-    if pd.isna(d) if not isinstance(d, str) else not d:
+    if isinstance(d, str):
+        if not d:
+            return "N/A"
+    elif pd.isna(d):
         return "N/A"
     try:
         return pd.Timestamp(d).strftime("%Y-%m-%d")
@@ -581,11 +577,3 @@ def _input_exists(input_obj, name):
         return True
     except Exception:
         return False
-
-
-def _safe_input(input_obj, name, default):
-    try:
-        v = input_obj[name]()
-        return v if v is not None else default
-    except Exception:
-        return default
