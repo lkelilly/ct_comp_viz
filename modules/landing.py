@@ -185,7 +185,7 @@ def landing_page_ui():
                             "input.include_other_id_land",
                             ui.input_text(
                                 "query_other_id_land", None,
-                                placeholder="e.g. LY3819469, LY3473329",
+                                placeholder="e.g. LY3819469",
                             ),
                         ),
                         col_widths=[6, 6],

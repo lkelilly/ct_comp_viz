@@ -92,12 +92,9 @@ main_layout = ui.page_navbar(
 
 app_ui = ui.page_fluid(
     ui.head_content(
-        ui.tags.link(
-            rel="stylesheet",
-            href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",
-        ),
+        ui.tags.script(src="https://cdn.plot.ly/plotly-latest.min.js"),
         ui.tags.style("""
-            body { font-family: 'Lato', sans-serif; margin: 0; }
+            body { font-family: system-ui, Avenir, Helvetica, Arial, sans-serif; margin: 0; }
             body:has(#viz_sidebar) #viz_sidebar ~ .main { overflow: hidden !important; }
             .bslib-sidebar-layout { height: 100vh; }
             /* Only disable scroll on the outermost bslib layout */

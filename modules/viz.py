@@ -536,7 +536,7 @@ def viz_server(input, output, session, active_data):
                 ticklabelstandoff=20,
             )
             p.set(3, message="Rendering", detail="This won't take too long...")
-            html = fig.to_html(full_html=False, include_plotlyjs="cdn", config={"responsive": True})
+            html = fig.to_html(full_html=False, include_plotlyjs=False, config={"responsive": True})
 
         return ui.HTML(html)
 
