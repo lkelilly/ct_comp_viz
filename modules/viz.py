@@ -429,6 +429,10 @@ def viz_server(input, output, session, active_data):
                 t_start   = trial.get("start_date")
                 t_end     = trial.get("completion_date")
                 t_primary = trial.get("primary_completion_date")
+                # Use raw API strings for hover labels when available (preserves "YYYY-MM")
+                t_start_label   = trial.get("start_date_raw") or _fmt_date(t_start)
+                t_end_label     = trial.get("completion_date_raw") or _fmt_date(t_end)
+                t_primary_label = trial.get("primary_completion_date_raw") or _fmt_date(t_primary)
 
                 enroll_label = _enrollment_label(enroll)
                 lw = _enrollment_linewidth(enroll_label, bar_w_mult) if reflect_size else 12 * bar_w_mult
@@ -442,9 +446,9 @@ def viz_server(input, output, session, active_data):
                     f"Phase: {phase}<br>"
                     f"Status: {status}<br>"
                     f"Enrollment: {int(enroll) if pd.notna(enroll) else 'N/A'}<br>"
-                    f"Start: {_fmt_date(t_start)}<br>"
-                    f"Primary completion: {_fmt_date(t_primary)}<br>"
-                    f"Completion: {_fmt_date(t_end)}"
+                    f"Start: {t_start_label}<br>"
+                    f"Primary completion: {t_primary_label}<br>"
+                    f"Completion: {t_end_label}"
                 )
 
                 _pts = pd.date_range(t_start, t_end, periods=20).tolist() if pd.notna(t_start) and pd.notna(t_end) else [t_start, t_end]
@@ -468,7 +472,7 @@ def viz_server(input, output, session, active_data):
                         name="Primary Completion",
                         legendgroup="__primary__",
                         showlegend=False,
-                        hovertemplate=f"Primary completion: {_fmt_date(t_primary)}<extra></extra>",
+                        hovertemplate=f"Primary completion: {t_primary_label}<extra></extra>",
                     ))
 
                 # Right-side label: acronym only (if enabled and differs from NCT)

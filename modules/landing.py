@@ -311,7 +311,7 @@ def landing_server(input, output, session,
                    api_data, upload_data, upload_data_raw, api_error,
                    filter_snapshot, log_entries,
                    main_layout, run_fetch_fn, read_uploaded_csv_fn,
-                   process_fn):
+                   process_fn, enrich_fn=None):
 
     # ── Safe helpers ──────────────────────────────────────────────────────────
 
@@ -470,6 +470,8 @@ def landing_server(input, output, session,
         try:
             df = read_uploaded_csv_fn(path)
             df = process_fn(df)
+            if enrich_fn is not None:
+                df = enrich_fn(df)
             api_data.set(None)
             upload_data.set(df)
             upload_data_raw.set(df)

@@ -5,7 +5,7 @@ Trial Information tab — UI and server logic.
 """
 
 import pandas as pd
-from itables import to_html_datatable
+from itables import to_html_datatable, JavascriptFunction
 from shiny import render, ui
 
 from config import TRIAL_TABLE_LABELS, TRUNCATE_COLS, TRUNCATE_LENGTH
@@ -44,6 +44,26 @@ def trial_info_server(input, output, session, active_data):
                     else x
                 )
 
+        pub_label = TRIAL_TABLE_LABELS.get("primary_result_publication", "Primary Result Publication")
+        col_defs = []
+        if pub_label in display_cols:
+            pub_idx = display_cols.index(pub_label)
+            col_defs.append({
+                "targets": [pub_idx],
+                "render": JavascriptFunction(
+                    "function(data, type, row) {"
+                    "  if (type !== 'display' || !data || data === 'NA') return data;"
+                    "  return data.split(' | ').map(function(part) {"
+                    "    part = part.trim();"
+                    "    if (part.indexOf('http://') === 0 || part.indexOf('https://') === 0) {"
+                    "      return '<a href=\"' + part + '\" target=\"_blank\">' + part + '</a>';"
+                    "    }"
+                    "    return part;"
+                    "  }).join(' | ');"
+                    "}"
+                ),
+            })
+
         table_html = to_html_datatable(
             df_display,
             showIndex=False,
@@ -52,5 +72,6 @@ def trial_info_server(input, output, session, active_data):
             style="width:100%",
             classes="display compact",
             scrollX=True,
+            columnDefs=col_defs if col_defs else None,
         )
         return ui.HTML(table_html)

@@ -10,6 +10,8 @@ Shared constants used across all files.
 # Maps DataFrame column name to display label
 TRIAL_TABLE_LABELS = {
     "nct_number":                 "NCT Number",
+    "primary_result_publication": "Primary Result Publication",
+    "publication_source":         "Publication Source",
     "acronym":                    "Acronym",
     "study_title":                "Study Title",
     "indication":                 "Indication",

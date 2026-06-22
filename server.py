@@ -22,8 +22,9 @@ from itables import to_html_datatable
 
 from shiny import reactive, render, ui
 
-from ct_api import fetch_studies, CTGovAPIError, CTGovNetworkError
-from utils  import studies_to_dataframe, read_uploaded_csv, process_raw_ctgov, filter_upload_data, _valid_date
+from ct_api     import fetch_studies, CTGovAPIError, CTGovNetworkError
+from utils      import studies_to_dataframe, read_uploaded_csv, process_raw_ctgov, filter_upload_data, _valid_date
+from pubmed_api import add_publications
 from ui     import main_layout
 
 from modules.landing        import landing_server
@@ -115,17 +116,21 @@ def server(input, output, session):
             df = studies_to_dataframe(studies)
             _log(f"Processed into DataFrame: {len(df)} rows x {len(df.columns)} columns")
 
-            with ui.Progress(min=0, max=4) as p:
+            with ui.Progress(min=0, max=5) as p:
                 p.set(0, message="Processing data", detail="Standardizing dates...")
                 await asyncio.sleep(0)
                 p.set(1, message="Processing data", detail="Mapping indications...")
                 await asyncio.sleep(0)
                 p.set(2, message="Processing data", detail="Adding compound information...")
                 df = process_raw_ctgov(df, query_intr=kwargs.get("query_intr") or "")
-                p.set(4, message="Processing data", detail="Done")
+                p.set(3, message="Processing data", detail="Fetching publications from PubMed...")
+                await asyncio.sleep(0)
+                df = await asyncio.to_thread(add_publications, df)
+                p.set(5, message="Processing data", detail="Done")
                 await asyncio.sleep(0)
 
             _log(f"Processed DataFrame: indication + compound columns added", level="ok")
+            _log(f"Publication enrichment complete", level="ok")
 
             api_data.set(df)
             return True
@@ -259,6 +264,7 @@ def server(input, output, session):
         run_fetch_fn=_run_fetch,
         read_uploaded_csv_fn=read_uploaded_csv,
         process_fn=process_raw_ctgov,
+        enrich_fn=add_publications,
     )
 
     trial_info_server(input, output, session, active_data=active_data)

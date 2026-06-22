@@ -18,6 +18,8 @@ _PLACEBO_RE = re.compile(r'^\s*placebo\b', re.IGNORECASE)
 
 _MASTER_PROTOCOL_KEYWORDS = ["master protocol", "platform trial", "platform study", "umbrella study"]
 
+_MONTH_ONLY = re.compile(r'^\d{4}-\d{2}$')
+
 
 def _valid_date(v):
     v = (v or "").strip()
@@ -153,6 +155,7 @@ def _extract_study(study: dict) -> dict:
     conditions  = proto.get("conditionsModule", {})
     arms        = proto.get("armsInterventionsModule", {})
     eligibility = proto.get("eligibilityModule", {})
+    references_mod = proto.get("referencesModule", {})
 
     # Identity
     nct_id  = ident.get("nctId", "")
@@ -212,6 +215,11 @@ def _extract_study(study: dict) -> dict:
         None
     )
 
+    # CT.gov reference PMIDs — raw IDs passed to the unified PubMed pipeline
+    refs_list = references_mod.get("references") or []
+    raw_pmids = [ref["pmid"] for ref in refs_list if ref.get("pmid")]
+    ctgov_pmids = " | ".join(raw_pmids) if raw_pmids else "NA"
+
     return {
         "nct_number":                 nct_id,
         "acronym":                    acronym,
@@ -238,6 +246,8 @@ def _extract_study(study: dict) -> dict:
         "funder_type":                funder_type,
         "other_ids":                  other_ids,
         "lilly_id":                   lilly_id,
+        "ctgov_pmids":                ctgov_pmids,
+        "publications":               "NA",
     }
 
 
@@ -263,7 +273,7 @@ def studies_to_dataframe(studies: list) -> pd.DataFrame:
         "primary_outcome_measures", "secondary_outcome_measures",
         "simplified_primary_outcome", "simplified_secondary_outcome",
         "inclusion_criteria", "exclusion_criteria",
-        "sponsor", "funder_type", "other_ids", "lilly_id",
+        "sponsor", "funder_type", "other_ids", "lilly_id", "publications",
     ]
     col_order = [c for c in col_order if c in df.columns]
     return df[col_order]
@@ -305,6 +315,15 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "") -> pd.DataFrame:
     # ── Step 1: Standardise dates ─────────────────────────────────────────────
     for col in ("start_date", "primary_completion_date", "completion_date"):
         if col in df.columns:
+            # Save original API string before conversion (e.g. "2026-06" or "2024-11-13")
+            df[col + "_raw"] = df[col].apply(
+                lambda v: v.strip() if isinstance(v, str) else ""
+            )
+            # Normalize month-only strings ("YYYY-MM") so pd.to_datetime can parse them
+            df[col] = df[col].apply(
+                lambda v: (v.strip() + "-01")
+                if isinstance(v, str) and _MONTH_ONLY.match(v.strip()) else v
+            )
             df[col] = pd.to_datetime(df[col], errors="coerce", utc=False)
 
     # Drop rows where all three date columns are NaT / missing
