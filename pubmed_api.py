@@ -11,13 +11,16 @@ Workflow:
   5. Invert the PMID → NCTs mapping to NCT → {pmids, source}.
   6. Fill 'publications' for every row via NCT lookup.
   7. Assign source "pubmed registry" (DataBankList) or "pubmed abstract" (regex).
-  8. Write results to 'primary_result_publication' and 'publication_source'.
+  8. Fetch citation counts from the NIH iCite API and attach to each article.
+  9. Apply filtering rules: keep all priority-journal articles unconditionally,
+     then select <=2 non-priority publications per trial.
+  10. Write results to 'relevant_publication' and 'publication_source'.
 """
 
 import re
 import time
 import xml.etree.ElementTree as ET
-from datetime import date
+from datetime import date, timedelta
 
 import requests
 import pandas as pd
@@ -26,6 +29,7 @@ import pandas as pd
 
 ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 EFETCH_URL  = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+ICITE_URL   = "https://icite.od.nih.gov/api/pubs"
 
 _BASE_PARAMS = {
     "tool":  "ct_comp_viz",
@@ -35,6 +39,7 @@ _BASE_PARAMS = {
 
 _NCT_RE = re.compile(r"\bNCT\d{8}\b")
 _EFETCH_BATCH = 500
+_ICITE_BATCH  = 200          # iCite recommends <=200 PMIDs per request
 _SLEEP_BETWEEN_BATCHES = 0.35
 
 _MONTH_MAP = {
@@ -42,26 +47,45 @@ _MONTH_MAP = {
     "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
 }
 
+MAX_RELEVANT_PUBS = 2
+
+# Secondary / post-hoc keywords — articles matching these are dropped (Rule 4).
 _SECONDARY_KEYWORDS = [
-    "post hoc", "post-hoc", "secondary analysis", "exploratory analysis",
-    "subgroup analysis", "sub-group", "sensitivity analysis", "pooled analysis",
-    "meta-analysis", "network meta-analysis", "integrated analysis",
-    "individual patient data", "open-label extension", "extension study",
-    "long-term follow-up", "follow-up analysis", "mediation analysis",
-    "predictors of", "prognostic factors", "design and rationale",
-    "study protocol", "baseline characteristics",
+    "post hoc", "post-hoc",
+    "secondary analysis", "exploratory analysis",
+    "subgroup analysis", "sub-group",
+    "sensitivity analysis",
+    "pooled analysis", "pooled",
+    "integrated analysis",
+    "individual patient data",
+    "open-label extension", "extension study",
+    "long-term follow-up", "follow-up analysis",
+    "predictors of", "prognostic factors",
+    "baseline characteristics",
+    "mediation analysis",
 ]
 
-_AGGREGATION_KEYWORDS = ["pooled", "meta"]
+# Design-paper keywords — these get special treatment in the date-filter step
+# (Rule 3 exception): instead of being dropped, they are ranked by citation
+# count and the most-cited one is kept.
+_DESIGN_KEYWORDS = [
+    "design and rationale",
+    "study protocol",
+    "study design",
+    "trial design",
+    "rationale and design",
+    "protocol for",
+    "design of",
+]
 
-_PRIORITY_JOURNALS = frozenset([
+_PRIORITY_JOURNALS = {
     "new england journal of medicine", "the new england journal of medicine",
     "lancet", "the lancet",
     "jama", "jama: the journal of the american medical association",
     "bmj", "bmj (clinical research ed.)",
     "annals of internal medicine",
     "nature medicine",
-])
+}
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -90,6 +114,7 @@ def _parse_pub_date(pub_date_el: "ET.Element | None") -> "date | None":
         return date(yr, mo, dy)
     except (ValueError, TypeError):
         return None
+
 
 def _build_search_query(nct_numbers: list) -> str:
     """Build a PubMed OR query searching each NCT number in [si] and [tiab]."""
@@ -134,6 +159,33 @@ def _efetch_xml(pmids: list) -> ET.Element:
         if i + _EFETCH_BATCH < len(pmids):
             time.sleep(_SLEEP_BETWEEN_BATCHES)
     return root
+
+
+def _fetch_citation_counts(pmids: list) -> dict:
+    """
+    Query the NIH iCite API for citation counts.
+    Returns {pmid_str: int} — missing PMIDs default to 0.
+    """
+    counts: dict = {}
+    if not pmids:
+        return counts
+    for i in range(0, len(pmids), _ICITE_BATCH):
+        batch = pmids[i: i + _ICITE_BATCH]
+        try:
+            resp = requests.get(
+                ICITE_URL,
+                params={"pmids": ",".join(batch)},
+                timeout=60,
+            )
+            resp.raise_for_status()
+            for item in resp.json().get("data", []):
+                pid = str(item.get("pmid", ""))
+                counts[pid] = int(item.get("citation_count", 0) or 0)
+        except Exception:
+            pass  # Graceful degradation — missing counts treated as 0
+        if i + _ICITE_BATCH < len(pmids):
+            time.sleep(_SLEEP_BETWEEN_BATCHES)
+    return counts
 
 
 def _parse_pmid_to_ncts(xml_root: ET.Element) -> dict:
@@ -196,8 +248,7 @@ def _parse_pmid_to_ncts(xml_root: ET.Element) -> dict:
 def _invert_mapping(pmid_to_ncts: dict) -> dict:
     """
     Invert {pmid: {"ncts": [...], "registry_ncts": {...}, "title": ..., ...}}
-    → {nct: {"articles": [{"pmid":..,"title":..,"pub_date":..,"journal":..,"registry_ncts":{..}}, ...],
-             "source": "pubmed registry"|"pubmed abstract"}}.
+    → {nct: {"articles": [...], "source": "pubmed registry"|"pubmed abstract"}}.
     Source is "pubmed registry" if any article found the NCT via DataBankList.
     """
     nct_to_info: dict = {}
@@ -219,25 +270,29 @@ def _invert_mapping(pmid_to_ncts: dict) -> dict:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def pick_primary_publication(articles: list, primary_completion_date=None) -> str:
+def pick_relevant_publications(articles: list, primary_completion_date=None) -> str:
     """
-    Select the single best primary-results publication from a list of article dicts.
-    Each dict has keys: pmid, title, pub_date (date|None), journal, registry_ncts (set).
+    Select relevant publications from a list of article dicts.
+    Each dict has keys: pmid, title, pub_date (date|None), journal,
+    registry_ncts (set), citation_count (int, default 0).
 
-    Rules applied in order:
-      1. Drop papers published before (primary_completion_date - 2 months). Grace period
-         of 2 months is applied to the cutoff. Articles with no pub_date are kept.
-         If 0 survive → return "no results yet | url1 | url2 ..."
-      2. If exactly 1 survives → return its URL.
-      3. Split into master-protocol papers (registry_ncts has >1 NCT) and non-master.
-         Drop aggregation papers (title contains "pooled" or "meta") from both groups.
-         Prefer non-master pool; fall back to master pool; fall back to all survivors.
-         If 1 survives → return URL (prefixed "master protocol | " if it's a master article).
-      4. Drop papers whose title contains any secondary-analysis keyword.
-         If all would be dropped, keep the current pool unchanged.
-         If 1 survives → return URL.
-      5. Sort by pub_date ascending (None last), tie-break by priority journal membership.
-         Return the winner's URL.
+    Logic overview:
+      1. Separate priority-journal articles. These are always kept and never dropped.
+      2. If priority articles already fill the quota (>= MAX_RELEVANT_PUBS),
+         return only those — no non-priority filtering needed.
+      3. Otherwise, compute remaining_slots = MAX_RELEVANT_PUBS - len(priority).
+         Apply rules 3–5 to non-priority articles to fill those slots:
+           3a. Drop articles published before (primary_completion_date - 2 months).
+               Articles with no pub_date are kept.  
+               Exception: design papersamong the dropped are ranked by citation; 
+               the most-cited one is kept. 
+           3b. Drop secondary / post-hoc analyses (_SECONDARY_KEYWORDS). Meta-analyses are NOT dropped.
+           3c. If still more than remaining_slots, rank by citation count and take the top remaining_slots.
+
+    Display order: priority articles first (by citation desc), then
+    non-priority articles (by citation desc).
+
+    Returns pipe-separated PubMed URLs, or "NA" if no articles.
     """
     if not articles:
         return "NA"
@@ -245,12 +300,42 @@ def pick_primary_publication(articles: list, primary_completion_date=None) -> st
     def _url(a: dict) -> str:
         return f"https://pubmed.ncbi.nlm.nih.gov/{a['pmid']}/"
 
-    # ── Rule 1: drop papers before primary_completion_date − 2 months ──────────
-    all_urls = " | ".join(_url(a) for a in articles)
+    def _is_priority(a: dict) -> bool:
+        return a["journal"].lower().strip() in _PRIORITY_JOURNALS
+
+    def _is_design(a: dict) -> bool:
+        t = a["title"].lower()
+        return any(kw in t for kw in _DESIGN_KEYWORDS)
+
+    def _is_secondary(a: dict) -> bool:
+        t = a["title"].lower()
+        return any(kw in t for kw in _SECONDARY_KEYWORDS)
+
+    def _cite_count(a: dict) -> int:
+        return a.get("citation_count", 0)
+
+    # ── Step 1: split into priority vs non-priority ───────────────────────
+    priority_articles = sorted(
+        [a for a in articles if _is_priority(a)],
+        key=_cite_count, reverse=True,
+    )
+    non_priority = [a for a in articles if not _is_priority(a)]
+
+    # ── Step 2: if priority already fills the quota, return them only ─────
+    if len(priority_articles) >= MAX_RELEVANT_PUBS:
+        return " | ".join(_url(a) for a in priority_articles)
+
+    remaining_slots = MAX_RELEVANT_PUBS - len(priority_articles)
+
+    # ── Step 2b: if non-priority already fits, keep all — skip filtering ──
+    if len(non_priority) <= remaining_slots:
+        non_priority.sort(key=_cite_count, reverse=True)
+        return " | ".join(_url(a) for a in priority_articles + non_priority)
+
+    # ── Step 3a: date filter on non-priority articles ─────────────────────
     cutoff = None
     if primary_completion_date is not None:
         try:
-            from datetime import timedelta
             pcd = primary_completion_date
             if hasattr(pcd, "to_pydatetime"):
                 pcd = pcd.to_pydatetime().date()
@@ -262,64 +347,38 @@ def pick_primary_publication(articles: list, primary_completion_date=None) -> st
             cutoff = None
 
     if cutoff is not None:
-        survivors = [a for a in articles if a["pub_date"] is None or a["pub_date"] >= cutoff]
+        passed_date = [a for a in non_priority if a["pub_date"] is None or a["pub_date"] >= cutoff]
+        dropped     = [a for a in non_priority if a["pub_date"] is not None and a["pub_date"] < cutoff]
+
+        # Exception: among dropped articles, rescue the most-cited design paper
+        design_dropped = [a for a in dropped if _is_design(a)]
+        rescued_design = None
+        if design_dropped:
+            design_dropped.sort(key=_cite_count, reverse=True)
+            rescued_design = design_dropped[0]
+
+        pool = passed_date
+        if rescued_design is not None:
+            pool.append(rescued_design)
     else:
-        survivors = list(articles)
+        pool = list(non_priority)
 
-    if not survivors:
-        return f"no results yet, but found paper | {all_urls}"
-
-    # ── Rule 2: single survivor ────────────────────────────────────────────────
-    if len(survivors) == 1:
-        return _url(survivors[0])
-
-    # ── Rule 3: master protocol / aggregation filtering ────────────────────────
-    def _is_aggregation(a: dict) -> bool:
-        t = a["title"].lower()
-        return any(kw in t for kw in _AGGREGATION_KEYWORDS)
-
-    def _is_master(a: dict) -> bool:
-        return len(a["registry_ncts"]) > 1
-
-    non_master = [a for a in survivors if not _is_master(a) and not _is_aggregation(a)]
-    master     = [a for a in survivors if  _is_master(a) and not _is_aggregation(a)]
-
-    if non_master:
-        pool = non_master
-        pool_is_master = False
-    elif master:
-        pool = master
-        pool_is_master = True
-    else:
-        # All were aggregation — fall back to all survivors
-        pool = survivors
-        pool_is_master = False
-
-    if len(pool) == 1:
-        prefix = "master protocol | " if pool_is_master else ""
-        return f"{prefix}{_url(pool[0])}"
-
-    # ── Rule 4: drop secondary-analysis papers ─────────────────────────────────
-    def _is_secondary(a: dict) -> bool:
-        t = a["title"].lower()
-        return any(kw in t for kw in _SECONDARY_KEYWORDS)
-
+    # ── Step 3b: drop secondary / post-hoc analyses ───────────────────────
     filtered = [a for a in pool if not _is_secondary(a)]
     if filtered:
         pool = filtered
+    # (If all would be dropped, keep the pool unchanged)
 
-    if len(pool) == 1:
-        return _url(pool[0])
+    # ── Step 3c: if still more than remaining_slots, rank by citation ─────
+    pool.sort(key=_cite_count, reverse=True)
+    if len(pool) > remaining_slots:
+        pool = pool[:remaining_slots]
 
-    # ── Rule 5: earliest after completion, tie-break by priority journal ────────
-    def _sort_key(a: dict):
-        # (pub_date or far-future, not-priority-journal)
-        d = a["pub_date"] if a["pub_date"] is not None else date(9999, 12, 31)
-        in_priority = a["journal"].lower().strip() in _PRIORITY_JOURNALS
-        return (d, not in_priority)
-
-    pool.sort(key=_sort_key)
-    return _url(pool[0])
+    # ── Combine: priority (by citation) then non-priority (by citation) ───
+    combined = priority_articles + pool
+    if not combined:
+        return "NA"
+    return " | ".join(_url(a) for a in combined)
 
 
 def add_publications(df: pd.DataFrame) -> pd.DataFrame:
@@ -328,10 +387,11 @@ def add_publications(df: pd.DataFrame) -> pd.DataFrame:
 
     Seed PMIDs from the ctgov_pmids column (CT.gov references module) are
     combined with ESearch results for NCTs that had no seed PMIDs, then all
-    are run through the same EFetch + NCT-matching pipeline. Source is
-    "pubmed registry" (DataBankList hit) or "pubmed abstract" (regex scan).
+    are run through the same EFetch + NCT-matching pipeline. iCite citation
+    counts are fetched and attached. Source is "pubmed registry" (DataBankList
+    hit) or "pubmed abstract" (regex scan).
 
-    Writes 'primary_result_publication' and 'publication_source'.
+    Writes 'relevant_publication' and 'publication_source'.
     Safe to call on both CT.gov-fetched and user-uploaded DataFrames.
     Network errors are caught silently.
     """
@@ -378,6 +438,13 @@ def add_publications(df: pd.DataFrame) -> pd.DataFrame:
             nct_map  = _invert_mapping(pmid_map)
             nct_source_map = {nct: info["source"] for nct, info in nct_map.items()}
 
+            # Step 3b: Fetch citation counts from iCite and attach to articles
+            unique_pmids = list(pmid_map.keys())
+            cite_counts = _fetch_citation_counts(unique_pmids)
+            for nct, info in nct_map.items():
+                for article in info["articles"]:
+                    article["citation_count"] = cite_counts.get(article["pmid"], 0)
+
         # Step 4: Fill publications via NCT lookup
         if nct_col and nct_map:
             def _fill(row):
@@ -394,18 +461,18 @@ def add_publications(df: pd.DataFrame) -> pd.DataFrame:
     except Exception:
         pass  # Leave publications unchanged on any network/parse error
 
-    # Step 5: Write primary_result_publication and publication_source
+    # Step 5: Write relevant_publication and publication_source
     def _build_row(row):
         nct  = row.get(nct_col, "") if nct_col else ""
         pubs = row["publications"]
         if pubs == "NA" or nct not in nct_map:
-            return "NA", "NA"
+            return "No Article Found", "NA"
         articles = nct_map[nct]["articles"]
-        primary  = pick_primary_publication(articles, row.get("primary_completion_date"))
+        relevant = pick_relevant_publications(articles, row.get("primary_completion_date"))
         source   = nct_source_map.get(nct, "pubmed abstract")
-        return primary, source
+        return relevant, source
 
-    df[["primary_result_publication", "publication_source"]] = df.apply(
+    df[["relevant_publication", "publication_source"]] = df.apply(
         _build_row, axis=1, result_type="expand"
     )
     return df

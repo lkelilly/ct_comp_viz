@@ -1,49 +1,9 @@
-## To Run It Locally
-
-1. Clone the repo
-   ```bash
-   git clone <repo-url>
-   cd ct_comp_viz
-   ```
-
-2. Create a virtual environment and install dependencies
-   ```bash
-   python -m venv .venv
-
-   # Windows
-   .venv\Scripts\activate
-   # macOS / Linux
-   source .venv/bin/activate
-
-   pip install -r requirements.txt
-   ```
-
-3. Run the app
-   ```bash
-   shiny run app.py
-   ```
-   Then open `http://127.0.0.1:8000` in your browser.
-
-### Own Notes
-
-`indication rule` branch: 
-Changes from the initial version: 
-> - Using a more complex logic of indication handling with overrinding rules than just extracting the condition and matching with synonym. (added) 
-> - Add acronym search from title rule: 
->     - all caps + parenthesis (more tests needed) 
-> - Compound mutate from the user's input or the primary intervention (the first, ignore placebo) 
->     - placebo handling logic pending 
-> - New outcome columns to keep (added)
-> - Added participation criteria. 
->     - split the eligibility and exclusion. 
-
-`viz` branch:
-> - fix the upload data logic in:
->     - compound: ignore placebo, display the most general term
->     - indication: splitting rule include minor cases where no whitespace around conditions. 
-> - add viz
-
-`pub` bramch:
+`pub` branch:
 > add PubMed API, match NCT number, filter for primary result paper.
 > fix date rendering issue with _itables_ package. 
-> TODO: change the filter logic, keep pubs from main journals. 
+> publication matching/filering logic:
+> - extract PMID from _ct.gov_, send to _PubMed_ API. 
+> - fetch from PMID, match NCT number with _[si]_, title, or abstract. 
+> - trying to find the primary result paper display.
+>     - logic to be put there. 
+> - keep papers from important journals and rank by citation number, keep top 3. 

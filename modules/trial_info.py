@@ -44,7 +44,7 @@ def trial_info_server(input, output, session, active_data):
                     else x
                 )
 
-        pub_label = TRIAL_TABLE_LABELS.get("primary_result_publication", "Primary Result Publication")
+        pub_label = TRIAL_TABLE_LABELS.get("relevant_publication", "Relevant Publication")
         col_defs = []
         if pub_label in display_cols:
             pub_idx = display_cols.index(pub_label)
@@ -64,14 +64,16 @@ def trial_info_server(input, output, session, active_data):
                 ),
             })
 
-        table_html = to_html_datatable(
-            df_display,
+        dt_kwargs = dict(
             showIndex=False,
             lengthMenu=[10, 25, 50, 100],
             pageLength=10,
             style="width:100%",
             classes="display compact",
             scrollX=True,
-            columnDefs=col_defs if col_defs else None,
         )
+        if col_defs:
+            dt_kwargs["columnDefs"] = col_defs
+
+        table_html = to_html_datatable(df_display, **dt_kwargs)
         return ui.HTML(table_html)
