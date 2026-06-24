@@ -26,9 +26,12 @@ def _enrollment_label(n):
         n = float(n)
     except (TypeError, ValueError):
         return "< 100"
+    if pd.isna(n):
+        return "< 100"
     for lo, hi, label, _ in _ENROLLMENT_BUCKETS:
         if (lo is None or n >= lo) and (hi is None or n < hi):
             return label
+    return "< 100"
 
 def _enrollment_linewidth(label, multiplier=1.0):
     for _, _, lbl, width in _ENROLLMENT_BUCKETS:

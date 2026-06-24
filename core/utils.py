@@ -26,6 +26,39 @@ def _valid_date(v):
     return v if re.match(r"^\d{4}-\d{2}-\d{2}$", v) else None
 
 
+def build_filter_kwargs(input) -> dict:
+    """
+    Build the shared sidebar-filter portion of a fetch/filter kwargs dict.
+
+    Reads only the filter + sort + max_results widgets (which have the same
+    input IDs on the landing page and the main sidebar). Query-text fields
+    differ by view, so each caller supplies those separately and merges:
+
+        kwargs = dict(query_cond=..., ..., **build_filter_kwargs(input))
+    """
+    return dict(
+        filter_phase=list(input.filter_phase()) if input.filter_phase() else [],
+        filter_status=(
+            input.filter_status().split("|") if input.filter_status() else []
+        ),
+        filter_study_type=list(input.filter_study_type()) if input.filter_study_type() else [],
+        filter_funder=list(input.filter_funder()) if input.filter_funder() else [],
+        filter_sex=input.filter_sex(),
+        filter_healthy=input.filter_healthy(),
+        filter_results=input.filter_results(),
+        filter_age_min=input.filter_age_min(),
+        filter_age_max=input.filter_age_max(),
+        filter_enroll_min=input.filter_enroll_min(),
+        filter_enroll_max=input.filter_enroll_max(),
+        filter_start_from=_valid_date(input.filter_start_from()),
+        filter_start_to=_valid_date(input.filter_start_to()),
+        filter_completion_from=_valid_date(input.filter_completion_from()),
+        filter_completion_to=_valid_date(input.filter_completion_to()),
+        sort_order=input.sort_order(),
+        max_results=int(input.max_results() or 500),
+    )
+
+
 def _is_isa_master_protocol(title: str, primary_outcome_text: str) -> bool:
     """Return True if this is a master protocol study with ISA in the primary outcome."""
     title_lower = (title or "").lower()

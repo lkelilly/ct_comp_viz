@@ -15,7 +15,7 @@ from datetime import datetime
 
 from shiny import reactive, render, ui
 
-from core.utils import _valid_date
+from core.utils import _valid_date, build_filter_kwargs
 
 
 # ── Widget factories (used by both landing and ui.py sidebar) ─────────────────
@@ -327,26 +327,7 @@ def landing_server(input, output, session,
             query_spons=input.query_spons() or "",
             query_id=input.query_id() or "",
             query_outc=input.query_outc() or "",
-            filter_phase=list(input.filter_phase()) if input.filter_phase() else [],
-            filter_status=(
-                input.filter_status().split("|")
-                if input.filter_status() else []
-            ),
-            filter_study_type=list(input.filter_study_type()) if input.filter_study_type() else [],
-            filter_funder=list(input.filter_funder()) if input.filter_funder() else [],
-            filter_sex=input.filter_sex(),
-            filter_healthy=input.filter_healthy(),
-            filter_results=input.filter_results(),
-            filter_age_min=input.filter_age_min(),
-            filter_age_max=input.filter_age_max(),
-            filter_enroll_min=input.filter_enroll_min(),
-            filter_enroll_max=input.filter_enroll_max(),
-            filter_start_from=_valid_date(input.filter_start_from()),
-            filter_start_to=_valid_date(input.filter_start_to()),
-            filter_completion_from=_valid_date(input.filter_completion_from()),
-            filter_completion_to=_valid_date(input.filter_completion_to()),
-            sort_order=input.sort_order(),
-            max_results=int(input.max_results() or 500),
+            **build_filter_kwargs(input),
         )
 
     # ── View switcher ─────────────────────────────────────────────────────────

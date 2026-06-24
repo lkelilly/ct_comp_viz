@@ -4,7 +4,6 @@ modules/trial_info.py
 Trial Information tab — UI and server logic.
 """
 
-import pandas as pd
 from itables import to_html_datatable, JavascriptFunction
 from shiny import render, ui
 

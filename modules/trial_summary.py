@@ -12,23 +12,6 @@ def _build_summary(df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate df by compound into one summary row per compound."""
     df = df.copy()
 
-    ph3 = df[df["phases"] == "PHASE3"].copy()
-
-    def _ph3_stats(grp):
-        sub = ph3[ph3["compound"] == grp.name]
-        if sub.empty:
-            return pd.Series({
-                "Number of Ph3 Studies": 0,
-                "First Ph3 Study": None,
-                "First Ph3 Completion Date": None,
-            })
-        idx = sub["primary_completion_date"].idxmin()
-        return pd.Series({
-            "Number of Ph3 Studies": sub["nct_number"].nunique(),
-            "First Ph3 Study": sub.loc[idx, "acronym"],
-            "First Ph3 Completion Date": sub.loc[idx, "primary_completion_date"],
-        })
-
     base = df.groupby("compound", sort=False).apply(
         lambda g: pd.Series({
             "Number of Studies": g["nct_number"].nunique(),
@@ -36,13 +19,41 @@ def _build_summary(df: pd.DataFrame) -> pd.DataFrame:
         })
     ).reset_index()
 
-    ph3_stats = (
-        df.groupby("compound", sort=False)
-        .apply(_ph3_stats)
-        .reset_index()
-    )
+    # Phase 3 stats — group the Phase 3 subset once
+    ph3 = df[df["phases"] == "PHASE3"]
+
+    def _ph3_group_stats(sub):
+        pcd = sub["primary_completion_date"]
+        if pcd.notna().any():
+            idx         = pcd.idxmin()
+            first_study = sub.loc[idx, "acronym"]
+            first_date  = sub.loc[idx, "primary_completion_date"]
+        else:
+            first_study = None
+            first_date  = None
+        return pd.Series({
+            "Number of Ph3 Studies": sub["nct_number"].nunique(),
+            "First Ph3 Study": first_study,
+            "First Ph3 Completion Date": first_date,
+        })
+
+    if not ph3.empty:
+        ph3_stats = (
+            ph3.groupby("compound", sort=False)
+            .apply(_ph3_group_stats)
+            .reset_index()
+        )
+    else:
+        ph3_stats = pd.DataFrame(columns=[
+            "compound", "Number of Ph3 Studies",
+            "First Ph3 Study", "First Ph3 Completion Date",
+        ])
 
     summary = base.merge(ph3_stats, on="compound", how="left")
+    # Compounds with no Phase 3 studies will be 0
+    summary["Number of Ph3 Studies"] = (
+        summary["Number of Ph3 Studies"].fillna(0).astype(int)
+    )
     summary = summary.rename(columns={"compound": "Compound"})
     return summary[
         [

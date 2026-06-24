@@ -6,6 +6,7 @@ Landing page UI lives in modules/landing.py.
 Trial Information UI lives in modules/trial_info.py.
 Trail Summary UI lives in modules/trail_summary.py.
 Compare page UI lives in modules/compare.py.
+Viz page UI lives in modules/viz.py.
 """
 
 from shiny import ui
