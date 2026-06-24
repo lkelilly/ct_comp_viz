@@ -281,11 +281,11 @@ def pick_relevant_publications(articles: list, primary_completion_date=None) -> 
       2. If priority articles already fill the quota (>= MAX_RELEVANT_PUBS),
          return only those — no non-priority filtering needed.
       3. Otherwise, compute remaining_slots = MAX_RELEVANT_PUBS - len(priority).
-         Apply rules 3–5 to non-priority articles to fill those slots:
+         Apply rules 3a-3c to non-priority articles to fill those slots:
            3a. Drop articles published before (primary_completion_date - 2 months).
-               Articles with no pub_date are kept.  
-               Exception: design papersamong the dropped are ranked by citation; 
-               the most-cited one is kept. 
+               Articles with no pub_date are kept.
+               Exception: design papersamong the dropped are ranked by citation;
+               the most-cited one is kept.
            3b. Drop secondary / post-hoc analyses (_SECONDARY_KEYWORDS). Meta-analyses are NOT dropped.
            3c. If still more than remaining_slots, rank by citation count and take the top remaining_slots.
 

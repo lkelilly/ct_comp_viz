@@ -24,9 +24,9 @@
    ```
    Then open `http://127.0.0.1:8000` in your browser.
 
-### Own Notes
+### Dev Notes
 
-`indication rule` branch: 
+`indication-rule` branch: 
 Changes from the initial version: 
 > - Using a more complex logic of indication handling with overrinding rules than just extracting the condition and matching with synonym. (added) 
 > - Add acronym search from title rule: 
@@ -43,7 +43,11 @@ Changes from the initial version:
 >     - indication: splitting rule include minor cases where no whitespace around conditions. 
 > - add viz
 
-`pub` bramch:
-> add PubMed API, match NCT number, filter for primary result paper.
-> fix date rendering issue with _itables_ package. 
-> TODO: change the filter logic, keep pubs from main journals. 
+`pub` branch:
+> - add PubMed API, match NCT number, filter for primary result paper.
+> - fix date rendering issue with _itables_ package. 
+> - pub selection logic:
+>     - keep all pubs from main journals;
+>     - filter for papers after completion date (2 months grace period);
+>     - drop post-hoc or secondary analysis papers;
+>     - rank by citation count, if not papers in main journals, keep 2 at maximum. 

@@ -22,9 +22,9 @@ from itables import to_html_datatable
 
 from shiny import reactive, render, ui
 
-from ct_api     import fetch_studies, CTGovAPIError, CTGovNetworkError
-from utils      import studies_to_dataframe, read_uploaded_csv, process_raw_ctgov, filter_upload_data, _valid_date
-from pubmed_api import add_publications
+from core.ct_api     import fetch_studies, CTGovAPIError, CTGovNetworkError
+from core.utils      import studies_to_dataframe, read_uploaded_csv, process_raw_ctgov, filter_upload_data, _valid_date
+from core.pubmed_api import add_publications
 from ui     import main_layout
 
 from modules.landing        import landing_server

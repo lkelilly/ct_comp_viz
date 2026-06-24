@@ -13,7 +13,7 @@ import io
 import pandas as pd
 from shiny import render, ui
 
-from utils import read_uploaded_csv
+from core.utils import read_uploaded_csv
 
 
 def compare_ui():

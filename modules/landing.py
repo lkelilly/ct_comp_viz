@@ -15,7 +15,7 @@ from datetime import datetime
 
 from shiny import reactive, render, ui
 
-from utils import _valid_date
+from core.utils import _valid_date
 
 
 # ── Widget factories (used by both landing and ui.py sidebar) ─────────────────

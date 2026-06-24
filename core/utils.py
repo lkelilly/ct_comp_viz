@@ -11,7 +11,7 @@ Data processing utilities.
 import pandas as pd
 import re
 
-from indication_mapping import map_indication, _SYNONYM_RULES
+from .indication_mapping import map_indication, _SYNONYM_RULES
 
 
 _PLACEBO_RE = re.compile(r'^\s*placebo\b', re.IGNORECASE)

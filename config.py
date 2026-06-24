@@ -1,5 +1,5 @@
 """
-global.py
+config.py
 ─────────
 Shared constants used across all files.
 """

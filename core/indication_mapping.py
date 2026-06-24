@@ -5,10 +5,10 @@ Maps a trial's endpoints and conditions to a canonical indication label,
 with override rules driven by primary outcome and study title text.
 
 indication-rule.json schema
-// it is made up three major lists: synonyms, priority rules, and overrides. 
+// it is made up three major lists: synonyms, priority rules, and overrides.
 //     - `synonyms`: matching synonyms for conditions.
 //     - `priority_rules`: rules that has priority for some specific indications.
-//     - `overrides`: override simple condition matching with specific outcomes. 
+//     - `overrides`: override simple condition matching with specific outcomes.
 ───────────────────────────
 {
   "synonyms": {
@@ -146,7 +146,7 @@ def map_indication(conditions_str: str, outcome_str: str = "", title_str: str = 
     if any(t in outc_text for t in _PRIORITY_RULES.get("t2d_endpoint_terms", [])):
         if any(syn in cond_text for syn in _SYNONYM_BY_LABEL.get("Type 2 Diabetes", [])):
             return "Type 2 Diabetes"
-        
+
     # Fallback patch: if base_label is T2D but outcome has no HbA1c, the primary
     # condition may be a T2D complication. Re-scan ALL conditions (skipping T2D)
     # in JSON synonym order for the first more-specific match.
