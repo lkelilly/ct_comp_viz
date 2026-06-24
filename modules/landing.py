@@ -5,7 +5,7 @@ Landing page — UI and all landing-specific server logic.
 
 Owns:
   UI:     landing_page layout, widget factory functions
-  Server: active_view switcher, loading overlay, _on_run, _on_back,
+  Server: landing_view switcher, loading overlay, _on_run, _on_back,
           upload_status, api_error_msg, safe input helpers, _query_kwargs,
           filter snapshot/restore
 """
@@ -15,23 +15,15 @@ from datetime import datetime
 
 from shiny import reactive, render, ui
 
-from core.utils import _valid_date, build_filter_kwargs
+from core.utils import build_filter_kwargs
 
 
-# ── Widget factories (used by both landing and ui.py sidebar) ─────────────────
+# ── Shared inline styles ──────────────────────────────────────────────────────
 
-def primary_boxes(suffix=""):
-    s = suffix
-    return [
-        ui.input_text(f"query_cond{s}", "Condition/disease",      placeholder="e.g. Type 2 Diabetes"),
-        ui.input_text(f"query_term{s}", "Other terms",            placeholder="NCT Number, Drug Name, etc."),
-        ui.input_text(f"query_intr{s}", "Intervention/treatment", placeholder="e.g. Tirzepatide"),
-        ui.input_text(f"query_other_id{s}", "Alternative compound name",
-                      placeholder="e.g. LY3819469"),
-        ui.input_text(f"query_locn{s}", "Location",
-                      placeholder="Address, city, state, zip code, or country"),
-    ]
+_LABEL_STYLE  = "font-size:.9rem;"   # weight handled via the `fw-semibold` Bootstrap class
 
+
+# ── Widget factories ──────────────────────────────────────────────────────────
 
 def study_status_widget(inline=False):
     return ui.input_radio_buttons(
@@ -48,20 +40,20 @@ def study_status_widget(inline=False):
 
 def more_filters_widgets():
     return [
-        ui.p("Age", style="font-weight:600; font-size: 0.9rem; margin-bottom:.25rem;"),
+        ui.p("Age", class_="fw-semibold mb-1", style=_LABEL_STYLE),
         ui.layout_columns(
             ui.input_numeric("filter_age_min", "Minimum age (years)", value=None, min=0, max=120),
             ui.input_numeric("filter_age_max", "Maximum age (years)", value=None, min=0, max=120),
             col_widths=[6, 6],
         ),
-        ui.hr(style="margin:.5rem 0;"),
+        ui.hr(class_="my-2"),
         ui.input_select(
             "filter_sex", "Sex",
             choices={"All": "All", "FEMALE": "Female", "MALE": "Male"},
             selected="All",
         ),
         ui.input_checkbox("filter_healthy", "Accepts healthy volunteers", value=False),
-        ui.hr(style="margin:.5rem 0;"),
+        ui.hr(class_="my-2"),
         ui.input_checkbox_group(
             "filter_phase", "Phase",
             choices={
@@ -71,7 +63,7 @@ def more_filters_widgets():
             },
             selected=[],
         ),
-        ui.hr(style="margin:.5rem 0;"),
+        ui.hr(class_="my-2"),
         ui.input_checkbox_group(
             "filter_study_type", "Study Type",
             choices={
@@ -80,49 +72,48 @@ def more_filters_widgets():
             },
             selected=[],
         ),
-        ui.hr(style="margin:.5rem 0;"),
+        ui.hr(class_="my-2"),
         ui.input_checkbox_group(
             "filter_funder", "Funder Type",
             choices={"NIH": "NIH", "FED": "Other federal",
                      "INDUSTRY": "Industry", "OTHER": "Other"},
             selected=[],
         ),
-        ui.hr(style="margin:.5rem 0;"),
+        ui.hr(class_="my-2"),
         ui.input_radio_buttons(
             "filter_results", "Study Results",
             choices=["Any", "With results", "Without results"],
             selected="Any", inline=True,
         ),
-        ui.hr(style="margin:.5rem 0;"),
-        ui.p("Start date", style="font-weight:600; margin-bottom:.25rem;"),
+        ui.hr(class_="my-2"),
+        ui.p("Start date", class_="fw-semibold mb-1", style=_LABEL_STYLE),
         ui.layout_columns(
             ui.input_text("filter_start_from", "From", placeholder="YYYY-MM-DD"),
             ui.input_text("filter_start_to",   "To",   placeholder="YYYY-MM-DD"),
             col_widths=[6, 6],
         ),
         ui.p("Primary completion date",
-             style="font-weight:600; font-size: 0.9rem; margin:.5rem 0 .25rem;"),
+             class_="fw-semibold mt-2 mb-1", style=_LABEL_STYLE),
         ui.layout_columns(
             ui.input_text("filter_completion_from", "From", placeholder="YYYY-MM-DD"),
             ui.input_text("filter_completion_to",   "To",   placeholder="YYYY-MM-DD"),
             col_widths=[6, 6],
         ),
-        ui.hr(style="margin:.5rem 0;"),
-        ui.p("Enrollment size", style="font-weight:600; font-size: 0.9rem; margin-bottom:.25rem;"),
+        ui.hr(class_="my-2"),
+        ui.p("Enrollment size", class_="fw-semibold mb-1", style=_LABEL_STYLE),
         ui.layout_columns(
             ui.input_numeric("filter_enroll_min", "Min", value=None, min=0),
             ui.input_numeric("filter_enroll_max", "Max", value=None, min=0),
             col_widths=[6, 6],
         ),
-        ui.hr(style="margin:.5rem 0;"),
-        ui.p("Additional search fields",
-             style="font-weight:600; font-size: 0.9rem; margin-bottom:.25rem;"),
+        ui.hr(class_="my-2"),
+        ui.p("Additional search fields", class_="fw-semibold mb-1", style=_LABEL_STYLE),
         ui.input_text("query_spons",  "Sponsor/collaborator", placeholder="e.g. Eli Lilly and Company"),
         ui.input_text("query_titles", "Title/acronym",        placeholder="e.g. SURMOUNT"),
         ui.input_text("query_id",     "NCT/study ID",         placeholder="e.g. NCT04184622"),
         ui.input_text("query_outc",   "Outcome measure",      placeholder="e.g. HbA1c"),
-        ui.hr(style="margin:.5rem 0;"),
-        ui.p("Sorting", style="font-weight:600; font-size: 0.9rem; margin-bottom:.25rem;"),
+        ui.hr(class_="my-2"),
+        ui.p("Sorting", class_="fw-semibold mb-1", style=_LABEL_STYLE),
         ui.input_select(
             "sort_order", "Sort by",
             choices={
@@ -143,22 +134,22 @@ def more_filters_widgets():
 def landing_page_ui():
     return ui.div(
         ui.div(
-            ui.h2("Test", style="letter-spacing:.15em; margin-bottom:.25rem; font-size:1.75rem; font-weight:700;"),
+            ui.h2("Test", class_="fw-bold mb-1", style="letter-spacing:.15em; font-size:1.75rem;"),
             ui.p("hello",
                  style="color:#888; margin-bottom:2rem; font-size:.95rem;"),
 
-            ui.h6("UPLOAD YOUR OWN DATA",
-                  style="letter-spacing:.08em; color:#333; font-size:.85rem; font-weight:700; margin-bottom:.6rem;"),
+            ui.h6("UPLOAD YOUR OWN DATA", class_="section-header", style="margin-bottom:.6rem;"),
             ui.div(
                 ui.input_file("upload_file", None, accept=".csv",
                               button_label="Choose CSV", multiple=False),
                 ui.div(ui.output_text("upload_status"),
-                       style="font-size:.8rem; color:#888; margin-top:.35rem; min-height:1.1rem;"),
-                style="padding-top: .2rem; text-align:center; margin-bottom:.2rem;",
+                       class_="text-muted small mt-1",
+                       style="min-height:1.1rem;"),
+                class_="text-center",
+                style="padding-top:.2rem; margin-bottom:.2rem;",
             ),
 
-            ui.h6("QUERY CLINICALTRIALS.GOV",
-                  style="letter-spacing:.08em; color:#333; font-size:.85rem; font-weight:700; margin-bottom:.6rem;"),
+            ui.h6("QUERY CLINICALTRIALS.GOV", class_="section-header", style="margin-bottom:.6rem;"),
             ui.div(
                 ui.div(
                     ui.layout_columns(
@@ -179,7 +170,7 @@ def landing_page_ui():
                     ui.layout_columns(
                         ui.div(
                             ui.input_checkbox("include_other_id_land", "Include alternative compound name", value=False),
-                            style="display:flex; align-items:center;",
+                            class_="d-flex align-items-center",
                         ),
                         ui.panel_conditional(
                             "input.include_other_id_land",
@@ -194,7 +185,7 @@ def landing_page_ui():
                         study_status_widget(inline=True),
                         col_widths=[12],
                     ),
-                    style="display:flex; flex-direction:column; gap:0;",
+                    class_="d-flex flex-column gap-0",
                 ),
                 style="border:2px solid #e8e8e8; border-radius:8px; padding:1.25rem 1.25rem 0 1.25rem;",
             ),
@@ -226,36 +217,27 @@ def landing_page_ui():
                     ),
                     open=[], id="landing_accordion",
                 ),
-                style=(
-                    "border:2px solid #e8e8e8; border-radius:8px; overflow:hidden;"
-                    " margin-top:.75rem;"
-                ),
+                class_="overflow-hidden",
+                style="border:2px solid #e8e8e8; border-radius:8px; margin-top:.75rem;",
             ),
 
-            ui.hr(style="margin:1.75rem 0;"),
+            ui.hr(class_="my-4"),
             ui.div(
                 ui.output_text("api_error_msg"),
                 ui.input_action_button(
                     "btn_run", "Run Query",
-                    style=(
-                        "background:#1a1a2e; color:#fff; border:none;"
-                        " padding:.75rem 3rem; font-size:1rem; border-radius:6px;"
-                        " cursor:pointer; letter-spacing:.05em;"
-                    ),
+                    class_="btn btn-dark btn-lg",
+                    style="letter-spacing:.05em;",
                 ),
-                style="text-align:center;",
+                class_="text-center",
             ),
 
-            style=(
-                "background:#fff; border-radius:12px; padding:3rem;"
-                " box-shadow:0 4px 32px rgba(0,0,0,.08); width:100%; max-width:860px;"
-            ),
+            class_="card border-0 p-5 w-100",
+            style="max-width:860px; border-radius:12px; box-shadow:0 4px 32px rgba(0,0,0,.08);",
         ),
         id="landing_page",
-        style=(
-            "min-height:100vh; display:flex; align-items:center; justify-content:center;"
-            " background:#f5f5f7; padding:2rem;"
-        ),
+        class_="min-vh-100 d-flex align-items-center justify-content-center p-4",
+        style="background:#f5f5f7;",
     )
 
 
@@ -294,10 +276,11 @@ def _loading_overlay(fetched, total):
                         " text-align:center; min-width:360px;"
                     ),
                 ),
-                style="display:flex; align-items:center; justify-content:center; width:100%; height:100%;",
+                class_="d-flex align-items-center justify-content-center w-100 h-100",
             ),
+            class_="position-fixed",
             style=(
-                "position:fixed; inset:0; background:rgba(245,245,247,.85);"
+                "inset:0; background:rgba(245,245,247,.85);"
                 " z-index:9999; backdrop-filter:blur(3px);"
             ),
         ),
@@ -309,9 +292,8 @@ def _loading_overlay(fetched, total):
 def landing_server(input, output, session,
                    show_main, is_loading, load_progress,
                    api_data, upload_data, upload_data_raw, api_error,
-                   filter_snapshot, log_entries,
-                   main_layout, run_fetch_fn, read_uploaded_csv_fn,
-                   process_fn, enrich_fn=None):
+                   log_entries, run_fetch_fn, read_uploaded_csv_fn,
+                   process_fn, fetch_pubs_fn):
 
     # ── Safe helpers ──────────────────────────────────────────────────────────
 
@@ -334,9 +316,9 @@ def landing_server(input, output, session,
 
     @output
     @render.ui
-    def active_view():
+    def landing_view():
         if show_main.get():
-            return main_layout
+            return None
         if is_loading.get():
             fetched, total = load_progress.get()
             return _loading_overlay(fetched, total)
@@ -347,75 +329,12 @@ def landing_server(input, output, session,
     @reactive.effect
     @reactive.event(input.btn_run)
     async def _on_run():
-        filter_snapshot.set({
-            "filter_phase":           list(input.filter_phase()) if input.filter_phase() else [],
-            "filter_status":          input.filter_status(),
-            "filter_study_type":      list(input.filter_study_type()) if input.filter_study_type() else [],
-            "filter_funder":          list(input.filter_funder()) if input.filter_funder() else [],
-            "filter_sex":             input.filter_sex(),
-            "filter_healthy":         input.filter_healthy(),
-            "filter_results":         input.filter_results(),
-            "filter_age_min":         input.filter_age_min(),
-            "filter_age_max":         input.filter_age_max(),
-            "filter_enroll_min":      input.filter_enroll_min(),
-            "filter_enroll_max":      input.filter_enroll_max(),
-            "filter_start_from":      _valid_date(input.filter_start_from()),
-            "filter_start_to":        _valid_date(input.filter_start_to()),
-            "filter_completion_from": _valid_date(input.filter_completion_from()),
-            "filter_completion_to":   _valid_date(input.filter_completion_to()),
-            "sort_order":             input.sort_order(),
-            "max_results":            input.max_results(),
-        })
-
         is_loading.set(True)
         load_progress.set((0, 0))
         success = await run_fetch_fn(_query_kwargs_from_land())
         await asyncio.sleep(0)
         if success:
             show_main.set(True)
-            snap = filter_snapshot.get()
-            if snap.get("filter_phase"):
-                ui.update_checkbox_group("filter_phase",      selected=snap["filter_phase"])
-            if snap.get("filter_status") is not None:
-                ui.update_radio_buttons("filter_status",      selected=snap["filter_status"])
-            if snap.get("filter_study_type"):
-                ui.update_checkbox_group("filter_study_type", selected=snap["filter_study_type"])
-            if snap.get("filter_funder"):
-                ui.update_checkbox_group("filter_funder",     selected=snap["filter_funder"])
-            if snap.get("filter_sex"):
-                ui.update_select("filter_sex",                selected=snap["filter_sex"])
-            if snap.get("filter_results"):
-                ui.update_radio_buttons("filter_results",     selected=snap["filter_results"])
-            if snap.get("filter_age_min") is not None:
-                ui.update_numeric("filter_age_min",           value=snap["filter_age_min"])
-            if snap.get("filter_age_max") is not None:
-                ui.update_numeric("filter_age_max",           value=snap["filter_age_max"])
-            if snap.get("filter_enroll_min") is not None:
-                ui.update_numeric("filter_enroll_min",        value=snap["filter_enroll_min"])
-            if snap.get("filter_enroll_max") is not None:
-                ui.update_numeric("filter_enroll_max",        value=snap["filter_enroll_max"])
-            if snap.get("filter_start_from"):
-                ui.update_text("filter_start_from",           value=snap["filter_start_from"])
-            if snap.get("filter_start_to"):
-                ui.update_text("filter_start_to",             value=snap["filter_start_to"])
-            if snap.get("filter_completion_from"):
-                ui.update_text("filter_completion_from",      value=snap["filter_completion_from"])
-            if snap.get("filter_completion_to"):
-                ui.update_text("filter_completion_to",        value=snap["filter_completion_to"])
-            if snap.get("sort_order"):
-                ui.update_select("sort_order",                selected=snap["sort_order"])
-            if snap.get("max_results") is not None:
-                ui.update_numeric("max_results",              value=snap["max_results"])
-            ui.update_text("query_cond",     value=input.query_cond_land())
-            ui.update_text("query_intr",     value=input.query_intr_land())
-            ui.update_text("query_other_id", value=input.query_other_id_land()
-                           if input.include_other_id_land() else "")
-            ui.update_text("query_term",     value=input.query_term_land())
-            ui.update_text("query_locn",   value=input.query_locn_land())
-            ui.update_text("query_spons",  value=input.query_spons()  or "")
-            ui.update_text("query_titles", value=input.query_titles() or "")
-            ui.update_text("query_id",     value=input.query_id()     or "")
-            ui.update_text("query_outc",   value=input.query_outc()   or "")
 
     # ── Back button ───────────────────────────────────────────────────────────
 
@@ -429,6 +348,8 @@ def landing_server(input, output, session,
         log_entries.set(log_entries.get() + [
             (datetime.now().strftime("%H:%M:%S"), "info", "Returned to search page.")
         ])
+        api_data.set(None)
+        upload_data.set(None)
         show_main.set(False)
 
     # ── Upload feedback ───────────────────────────────────────────────────────
@@ -442,17 +363,24 @@ def landing_server(input, output, session,
 
     @reactive.effect
     @reactive.event(input.upload_file)
-    def _on_upload():
+    async def _on_upload():
         f = input.upload_file()
         if f is None:
             return
         name = f[0]["name"]
         path = f[0]["datapath"]
+        is_loading.set(True)
+        load_progress.set((0, 0))
         try:
             df = read_uploaded_csv_fn(path)
             df = process_fn(df)
-            if enrich_fn is not None:
-                df = enrich_fn(df)
+            with ui.Progress(min=0, max=3) as p:
+                p.set(0, message="Processing upload", detail="Processing data...")
+                await asyncio.sleep(0)
+                p.set(1, message="Processing upload", detail="Fetching publications from PubMed...")
+                df = await asyncio.to_thread(fetch_pubs_fn, df)
+                p.set(3, message="Processing upload", detail="Done")
+                await asyncio.sleep(0)
             api_data.set(None)
             upload_data.set(df)
             upload_data_raw.set(df)
@@ -468,6 +396,9 @@ def landing_server(input, output, session,
                 f"Error reading {name}: {e}"
             )])
             _upload_msg.set(f"⚠  Could not read {name}")
+        finally:
+            is_loading.set(False)
+            load_progress.set((0, 0))
 
     # ── Error display ─────────────────────────────────────────────────────────
 

@@ -72,14 +72,14 @@ def trial_summary_ui():
         "Trial Summary",
         ui.div(
             ui.output_ui("trial_summary_table"),
-            style="margin:1rem; overflow-x:auto;",
+            class_="m-3",
         ),
     )
 
 
 def trial_summary_server(input, output, session, active_data):
 
-    @output
+    @output(suspend_when_hidden=False)
     @render.ui
     def trial_summary_table():
         df = active_data()

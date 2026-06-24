@@ -22,7 +22,6 @@ from shiny import reactive, render, ui
 from core.ct_api     import fetch_studies, CTGovAPIError, CTGovNetworkError
 from core.utils      import (
     studies_to_dataframe, read_uploaded_csv, process_raw_ctgov,
-    filter_upload_data, build_filter_kwargs,
 )
 from core.pubmed_api import add_publications
 from ui     import main_layout
@@ -46,7 +45,6 @@ def server(input, output, session):
     upload_data_raw = reactive.Value(None)   # original upload; no overwritten after set
     compare_data    = reactive.Value(None)
     api_error       = reactive.Value(None)
-    filter_snapshot = reactive.Value({})
     log_entries     = reactive.Value([])
 
     @reactive.calc
@@ -56,6 +54,11 @@ def server(input, output, session):
         if upload_data.get() is not None:
             return upload_data.get()
         return None
+
+    # ── Keep the hidden view-flag in sync with show_main ──────────────────────
+    @reactive.effect
+    def _sync_show_main_flag():
+        ui.update_checkbox("show_main_flag", value=show_main.get())
 
     # ── Logging ───────────────────────────────────────────────────────────────
 
@@ -122,7 +125,7 @@ def server(input, output, session):
                 p.set(1, message="Processing data", detail="Mapping indications...")
                 await asyncio.sleep(0)
                 p.set(2, message="Processing data", detail="Adding compound information...")
-                df = process_raw_ctgov(df, query_intr=kwargs.get("query_intr") or "")
+                df = await asyncio.to_thread(process_raw_ctgov, df, query_intr=kwargs.get("query_intr") or "")
                 p.set(3, message="Processing data", detail="Fetching publications from PubMed...")
                 await asyncio.sleep(0)
                 df = await asyncio.to_thread(add_publications, df)
@@ -133,6 +136,8 @@ def server(input, output, session):
             _log(f"Publication enrichment complete", level="ok")
 
             api_data.set(df)
+            upload_data.set(None)
+            upload_data_raw.set(None)
             return True
         except CTGovAPIError as e:
             _log(f"API error: {e}", level="error")
@@ -149,58 +154,28 @@ def server(input, output, session):
 
         return False
 
-    # ── Re-run from sidebar ───────────────────────────────────────────────────
+    # ── Reset filter checkboxes when dataset changes ──────────────────────────
 
     @reactive.effect
-    @reactive.event(input.btn_rerun)
-    async def _on_rerun():
-        kwargs = dict(
-            query_cond=input.query_cond(),
-            query_intr=input.query_intr(),
-            query_other_id=input.query_other_id() or "",
-            query_term=input.query_term(),
-            query_locn=input.query_locn(),
-            query_titles=input.query_titles(),
-            query_spons=input.query_spons(),
-            query_id=input.query_id(),
-            query_outc=input.query_outc(),
-            **build_filter_kwargs(input),
-        )
-
-        if api_data.get() is not None:
-            _log("Re-running query with updated filters…")
-            await _run_fetch(kwargs)
-        else:
-            raw = upload_data_raw.get()
-            if raw is None:
-                _log("No uploaded data to filter.", level="warn")
-                return
-            _log(f"Applying filters to uploaded data…")
-            try:
-                filtered = filter_upload_data(raw, kwargs)
-                upload_data.set(filtered)
-                _log(
-                    f"Filters applied: {len(filtered):,} of {len(raw):,} rows shown.",
-                    level="ok",
-                )
-            except Exception as e:
-                _log(f"Error applying filters: {e}", level="error")
-
-    @reactive.effect
-    def _update_rerun_label():
-        if api_data.get() is not None:
-            ui.update_action_button("btn_rerun", label="Re-run Query")
-        elif upload_data.get() is not None:
-            ui.update_action_button("btn_rerun", label="Apply Filters")
-
-    @reactive.effect
-    def _toggle_sidebar_for_viz():
-        tab = input.main_navbar()
-        ui.update_sidebar("main_sidebar", show=(tab != "Visualization"))
+    def _reset_filters_on_new_data():
+        df = active_data()
+        if df is None or df.empty:
+            return
+        for col, input_id in [
+            ("compound",   "viz_compound"),
+            ("indication", "viz_indication"),
+            ("phases",     "viz_phase"),
+            ("compound",   "ti_compound"),
+            ("indication", "ti_indication"),
+            ("phases",     "ti_phase"),
+        ]:
+            if col in df.columns:
+                choices = sorted(df[col].dropna().unique().tolist())
+                ui.update_checkbox_group(input_id, choices=choices, selected=choices)
 
     # ── Console log ───────────────────────────────────────────────────────────
 
-    @output
+    @output(suspend_when_hidden=False)
     @render.ui
     def console_log():
         entries = log_entries.get()
@@ -239,13 +214,11 @@ def server(input, output, session):
         upload_data=upload_data,
         upload_data_raw=upload_data_raw,
         api_error=api_error,
-        filter_snapshot=filter_snapshot,
         log_entries=log_entries,
-        main_layout=main_layout,
         run_fetch_fn=_run_fetch,
         read_uploaded_csv_fn=read_uploaded_csv,
         process_fn=process_raw_ctgov,
-        enrich_fn=add_publications,
+        fetch_pubs_fn=add_publications,
     )
 
     trial_info_server(input, output, session, active_data=active_data)

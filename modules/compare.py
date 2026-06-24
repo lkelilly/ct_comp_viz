@@ -27,7 +27,8 @@ def compare_ui():
                         ui.input_file("upload_compare", None, accept=".csv",
                                       button_label="Choose CSV", multiple=False),
                         ui.div(ui.output_text("compare_upload_status"),
-                               style="font-size:.8rem; color:#888; margin-top:.35rem; min-height:1.1rem;"),
+                               class_="text-muted small mt-1",
+                               style="min-height:1.1rem;"),
                         style="text-align:center; padding:.5rem;",
                     ),
                 ),
@@ -36,14 +37,11 @@ def compare_ui():
                     ui.div(
                         ui.p(
                             "Download the current processed dataset (API or uploaded) as CSV.",
-                            style="font-size:.85rem; color:#888; margin-bottom:1rem;",
+                            class_="text-muted small mb-3",
                         ),
                         ui.download_button(
                             "download_processed", "Download CSV",
-                            style=(
-                                "background:#1a1a2e; color:#fff; border:none;"
-                                " padding:.6rem 1.5rem; border-radius:4px; cursor:pointer;"
-                            ),
+                            class_="btn btn-dark",
                         ),
                         style="text-align:center; padding:.5rem;",
                     ),
@@ -53,17 +51,19 @@ def compare_ui():
             ui.layout_columns(
                 ui.card(
                     ui.card_header("Uploaded Data"),
-                    ui.div(ui.p("Uploaded dataset will render here.", style="color:#aaa;"),
-                           style="height:45vh; display:flex; align-items:center; justify-content:center;"),
+                    ui.div(ui.p("Uploaded dataset will render here.", class_="text-muted"),
+                           class_="d-flex align-items-center justify-content-center",
+                           style="height:45vh;"),
                 ),
                 ui.card(
                     ui.card_header("API / Current Query Data"),
-                    ui.div(ui.p("API query results will render here.", style="color:#aaa;"),
-                           style="height:45vh; display:flex; align-items:center; justify-content:center;"),
+                    ui.div(ui.p("API query results will render here.", class_="text-muted"),
+                           class_="d-flex align-items-center justify-content-center",
+                           style="height:45vh;"),
                 ),
                 col_widths=[6, 6],
             ),
-            style="margin:1rem;",
+            class_="m-3",
         ),
     )
 

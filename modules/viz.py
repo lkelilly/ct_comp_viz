@@ -31,7 +31,6 @@ def _enrollment_label(n):
     for lo, hi, label, _ in _ENROLLMENT_BUCKETS:
         if (lo is None or n >= lo) and (hi is None or n < hi):
             return label
-    return "< 100"
 
 def _enrollment_linewidth(label, multiplier=1.0):
     for _, _, lbl, width in _ENROLLMENT_BUCKETS:
@@ -56,10 +55,7 @@ _COL_LABELS = {"indication": "Indication", "compound": "Compound", "phases": "Ph
 
 def viz_ui():
     sidebar = ui.sidebar(
-        ui.h6(
-            "SORTING OPTIONS",
-            style="letter-spacing:.08em; color:#333; font-size:.85rem; font-weight:700;",
-        ),
+        ui.h6("SORTING OPTIONS", class_="section-header"),
         ui.input_radio_buttons(
             "viz_group_by", "Group rows by:",
             choices={"compound": "Compound", "indication": "Indication", "phases": "Phase"},
@@ -82,19 +78,17 @@ def viz_ui():
         ),
 
         ui.hr(style="margin:.4rem 0;"),
-        ui.h6(
-            "TRIAL FILTERS",
-            style="letter-spacing:.08em; color:#333; margin-bottom:.5rem; font-size:.85rem; font-weight:700;",
+        ui.div(
+            ui.h6("TRIAL FILTERS", class_="section-header"),
+            ui.tags.small("Ctrl+Click to select only one item.",
+                          class_="d-block m-0", style="font-size:.75rem; color:#888;"),
         ),
         ui.output_ui("viz_compound_ui"),
         ui.output_ui("viz_indication_ui"),
         ui.output_ui("viz_phase_ui"),
 
         ui.hr(style="margin:.4rem 0;"),
-        ui.h6(
-            "DISPLAY OPTIONS",
-            style="letter-spacing:.08em; color:#333; margin-bottom:.5rem; font-size:.85rem; font-weight:700;",
-        ),
+        ui.h6("DISPLAY OPTIONS", class_="section-header mb-2"),
         ui.input_radio_buttons(
             "viz_reflect_size", "Bar width reflects enrollment:",
             choices={"yes": "Yes", "no": "No"},
@@ -126,7 +120,7 @@ def viz_ui():
             ui.div(
                 ui.output_ui("viz_notice"),
                 ui.output_ui("viz_plot"),
-                style="overflow-y:auto; overflow-x:auto; padding:.5rem; width:100%;",
+                class_="overflow-auto p-2 w-100",
             ),
         ),
     )
@@ -143,7 +137,7 @@ def viz_server(input, output, session, active_data):
     def viz_compound_ui():
         df = active_data()
         if df is None or df.empty:
-            return ui.p("No data loaded.", style="color:#aaa; font-size:1rem;")
+            return ui.p("No data loaded.", class_="fs-6", style="color:#aaa;")
         choices = sorted(df["compound"].dropna().unique().tolist())
         return ui.input_checkbox_group(
             "viz_compound", "Compound:",
@@ -184,14 +178,24 @@ def viz_server(input, output, session, active_data):
         df = active_data()
         if df is None or df.empty:
             return pd.DataFrame(), 0
-        compounds   = list(input.viz_compound())   if _input_exists(input, "viz_compound")   else []
-        indications = list(input.viz_indication())  if _input_exists(input, "viz_indication") else []
-        phases      = list(input.viz_phase())       if _input_exists(input, "viz_phase")      else []
-        if compounds:
+        all_compounds   = set(df["compound"].dropna().unique())
+        all_indications = set(df["indication"].dropna().unique())
+        all_phases      = set(df["phases"].dropna().unique())
+
+        raw_compounds   = list(input.viz_compound())   if _input_exists(input, "viz_compound")   else []
+        raw_indications = list(input.viz_indication())  if _input_exists(input, "viz_indication") else []
+        raw_phases      = list(input.viz_phase())       if _input_exists(input, "viz_phase")      else []
+
+        # Only filter if all selected values belong to the current dataset; otherwise show all
+        compounds   = raw_compounds   if raw_compounds   and set(raw_compounds).issubset(all_compounds)   else sorted(all_compounds)
+        indications = raw_indications if raw_indications and set(raw_indications).issubset(all_indications) else sorted(all_indications)
+        phases      = raw_phases      if raw_phases      and set(raw_phases).issubset(all_phases)          else sorted(all_phases)
+
+        if set(compounds) != all_compounds:
             df = df[df["compound"].isin(compounds)]
-        if indications:
+        if set(indications) != all_indications:
             df = df[df["indication"].isin(indications)]
-        if phases:
+        if set(phases) != all_phases:
             df = df[df["phases"].isin(phases)]
         before = len(df)
         df = df.dropna(subset=["start_date", "completion_date"])
@@ -203,8 +207,6 @@ def viz_server(input, output, session, active_data):
     @reactive.calc
     def viz_data():
         df, _ = _viz_filtered()
-        if df.empty:
-            return df
         sort_by  = input.viz_sort_by()
         group_by = input.viz_group_by()
         sort_cols = [group_by]
@@ -235,7 +237,7 @@ def viz_server(input, output, session, active_data):
             ui.tags.i(class_="bi bi-info-circle", style="margin-right:.4rem;"),
             f"{dropped:,} trial(s) in `Trial Information` not displayed due to missing or invalid start/end date",
             style=(
-                "background:#fff8e1; border:1px #ffe082; border-radius:8px;"
+                "background:#fff8e1; border:1px solid #ffe082; border-radius:8px;"
                 " padding:.5rem .75rem; font-size:0.85rem; color:#7b6000; margin:0 1rem .5rem 1rem;"
             ),
         )
@@ -250,7 +252,7 @@ def viz_server(input, output, session, active_data):
                      style="color:#aaa;"),
                 style=(
                     "height:40vh; display:flex; align-items:center; justify-content:center;"
-                    " border:2px #ddd; border-radius:8px; margin:1rem;"
+                    " border:2px solid #ddd; border-radius:8px; margin:1rem;"
                 ),
             )
 
@@ -267,7 +269,7 @@ def viz_server(input, output, session, active_data):
                 ),
                 style=(
                     "height:40vh; display:flex; flex-direction:column; align-items:center;"
-                    " justify-content:center; border:2px #e74c3c; border-radius:8px;"
+                    " justify-content:center; border:2px solid #e74c3c; border-radius:8px;"
                     " margin:1rem; padding:.5rem .75rem; background:#fff8f8;"
                 ),
             )
@@ -336,7 +338,7 @@ def viz_server(input, output, session, active_data):
                 )
                 mid = (group_start + group_end - 1) / 2
                 fig.add_annotation(
-                    x=-0.2, y=mid,
+                    x=-0.1, y=mid,
                     xref="paper", yref="y",
                     text=f"<b>{grp_val}</b>",
                     showarrow=False,
@@ -357,7 +359,7 @@ def viz_server(input, output, session, active_data):
 
             group_label = _COL_LABELS.get(group_col, group_col.capitalize())
             fig.add_annotation(
-                x=-0.12, y=-0.7,
+                x=-0.1, y=-0.7,
                 xref="paper", yref="y",
                 text=f"Group by: <b>{group_label}</b>",
                 showarrow=False,
@@ -454,7 +456,7 @@ def viz_server(input, output, session, active_data):
                     f"Completion: {t_end_label}"
                 )
 
-                _pts = pd.date_range(t_start, t_end, periods=20).tolist() if pd.notna(t_start) and pd.notna(t_end) else [t_start, t_end]
+                _pts = pd.date_range(pd.Timestamp(t_start), pd.Timestamp(t_end), periods=20).tolist()  # type: ignore[arg-type]
                 fig.add_trace(go.Scatter(
                     x=_pts,
                     y=[y_val] * len(_pts),
