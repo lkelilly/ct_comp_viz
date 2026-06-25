@@ -1,7 +1,7 @@
 """
 modules/landing.py
 ──────────────────
-Landing page — UI and all landing-specific server logic.
+Landing page — and all landing-specific server logic.
 
 Owns:
   UI:     landing_page layout, widget factory functions
@@ -11,16 +11,10 @@ Owns:
 """
 
 import asyncio
-from datetime import datetime
 
 from shiny import reactive, render, ui
 
 from core.utils import build_filter_kwargs
-
-
-# ── Shared inline styles ──────────────────────────────────────────────────────
-
-_LABEL_STYLE  = "font-size:.9rem;"   # weight handled via the `fw-semibold` Bootstrap class
 
 
 # ── Widget factories ──────────────────────────────────────────────────────────
@@ -40,7 +34,7 @@ def study_status_widget(inline=False):
 
 def more_filters_widgets():
     return [
-        ui.p("Age", class_="fw-semibold mb-1", style=_LABEL_STYLE),
+        ui.p("Age", class_="fw-semibold fs-6 mb-1"),
         ui.layout_columns(
             ui.input_numeric("filter_age_min", "Minimum age (years)", value=None, min=0, max=120),
             ui.input_numeric("filter_age_max", "Maximum age (years)", value=None, min=0, max=120),
@@ -86,34 +80,34 @@ def more_filters_widgets():
             selected="Any", inline=True,
         ),
         ui.hr(class_="my-2"),
-        ui.p("Start date", class_="fw-semibold mb-1", style=_LABEL_STYLE),
+        ui.p("Start date", class_="fw-semibold fs-6 mb-1"),
         ui.layout_columns(
             ui.input_text("filter_start_from", "From", placeholder="YYYY-MM-DD"),
             ui.input_text("filter_start_to",   "To",   placeholder="YYYY-MM-DD"),
             col_widths=[6, 6],
         ),
         ui.p("Primary completion date",
-             class_="fw-semibold mt-2 mb-1", style=_LABEL_STYLE),
+             class_="fw-semibold mt-2 mb-1 fs-6 mb-1"),
         ui.layout_columns(
             ui.input_text("filter_completion_from", "From", placeholder="YYYY-MM-DD"),
             ui.input_text("filter_completion_to",   "To",   placeholder="YYYY-MM-DD"),
             col_widths=[6, 6],
         ),
         ui.hr(class_="my-2"),
-        ui.p("Enrollment size", class_="fw-semibold mb-1", style=_LABEL_STYLE),
+        ui.p("Enrollment size", class_="fw-semibold fs-6 mb-1"),
         ui.layout_columns(
             ui.input_numeric("filter_enroll_min", "Min", value=None, min=0),
             ui.input_numeric("filter_enroll_max", "Max", value=None, min=0),
             col_widths=[6, 6],
         ),
         ui.hr(class_="my-2"),
-        ui.p("Additional search fields", class_="fw-semibold mb-1", style=_LABEL_STYLE),
+        ui.p("Additional search fields", class_="fw-semibold fs-6 mb-1"),
         ui.input_text("query_spons",  "Sponsor/collaborator", placeholder="e.g. Eli Lilly and Company"),
         ui.input_text("query_titles", "Title/acronym",        placeholder="e.g. SURMOUNT"),
         ui.input_text("query_id",     "NCT/study ID",         placeholder="e.g. NCT04184622"),
         ui.input_text("query_outc",   "Outcome measure",      placeholder="e.g. HbA1c"),
         ui.hr(class_="my-2"),
-        ui.p("Sorting", class_="fw-semibold mb-1", style=_LABEL_STYLE),
+        ui.p("Sorting", class_="fw-semibold fs-6 mb-1"),
         ui.input_select(
             "sort_order", "Sort by",
             choices={
@@ -134,22 +128,22 @@ def more_filters_widgets():
 def landing_page_ui():
     return ui.div(
         ui.div(
-            ui.h2("Test", class_="fw-bold mb-1", style="letter-spacing:.15em; font-size:1.75rem;"),
-            ui.p("hello",
-                 style="color:#888; margin-bottom:2rem; font-size:.95rem;"),
+            ui.h2("Dashboard Testing", class_="fw-bold mb-1"),
+            ui.p("Testing version of a dashboard that can connect ClinicalTrail.gov and" \
+            " PubMed to help summarize trial information, provide details, and render timelines.", 
+                 class_="fs-6 fw-normal text-start text-muted mb-2"),
 
-            ui.h6("UPLOAD YOUR OWN DATA", class_="section-header", style="margin-bottom:.6rem;"),
+            ui.h6("Option 1. Upload Data to Proces", class_="fw-bold mt-1 mb-1"),
             ui.div(
                 ui.input_file("upload_file", None, accept=".csv",
                               button_label="Choose CSV", multiple=False),
                 ui.div(ui.output_text("upload_status"),
-                       class_="text-muted small mt-1",
-                       style="min-height:1.1rem;"),
-                class_="text-center",
-                style="padding-top:.2rem; margin-bottom:.2rem;",
+                       class_="text-muted small mt-1"),
+                class_="text-center pt-1 mb-1",
             ),
 
-            ui.h6("QUERY CLINICALTRIALS.GOV", class_="section-header", style="margin-bottom:.6rem;"),
+            ui.hr(class_="my-1"),
+            ui.h6("Option 2. Query ClinicalTrial.gov", class_="fw-bold mt-3 mb-2"),
             ui.div(
                 ui.div(
                     ui.layout_columns(
@@ -187,14 +181,12 @@ def landing_page_ui():
                     ),
                     class_="d-flex flex-column gap-0",
                 ),
-                style="border:2px solid #e8e8e8; border-radius:8px; padding:1.25rem 1.25rem 0 1.25rem;",
+                class_="border border-secondary rounded-1",
+                style="padding:1.25rem 1.25rem 0 1.25rem;",
             ),
 
             ui.tags.style("""
-              #landing_accordion .accordion-button {
-                font-size: 1rem;
-                font-weight: 600;
-              }
+              /* Override rules */
               .shiny-input-container:has(#query_intr_land),
               .shiny-input-container:has(#query_locn_land),
               .shiny-input-container:has(#include_other_id_land) {
@@ -204,21 +196,39 @@ def landing_page_ui():
                 margin-top: 0 !important;
                 margin-bottom: 0 !important;
               }
+              .shiny-input-container:has(#upload_file) {
+                margin-bottom: 0 !important;
+            }
             """),
             ui.div(
-                ui.accordion(
-                    ui.accordion_panel(
-                        "More Filters",
-                        ui.layout_columns(
-                            ui.div(*more_filters_widgets()[:28]),
-                            ui.div(*more_filters_widgets()[28:]),
-                            col_widths=[6, 6],
+                ui.div(
+                    ui.div(
+                        ui.div(
+                            ui.tags.button(
+                                ui.tags.span("More Filters", class_="fs-6"),
+                                class_="accordion-button", type="button",
+                                data_bs_toggle="collapse", data_bs_target="#CollapseMorefilters",
+                                aria_expanded="true", aria_controls="collapseMorefilters",
+                            ),
+                            class_="fw-normal fs-5",
                         ),
+                        class_="accordion-header",
                     ),
-                    open=[], id="landing_accordion",
+                    ui.hr(class_="my-0 py-0"),
+                    ui.div(
+                        ui.div(
+                            ui.layout_columns(
+                                ui.div(*more_filters_widgets()[:28]),
+                                ui.div(*more_filters_widgets()[28:]),
+                                col_widths=[6, 6],
+                            ),
+                        ),
+                        class_="accordion-body accordion-collapse collapse",
+                        id="CollapseMorefilters",
+                    ),
+                    class_="accordion-item",
                 ),
-                class_="overflow-hidden",
-                style="border:2px solid #e8e8e8; border-radius:8px; margin-top:.75rem;",
+                class_="accordion border border-secondary rounded-1 mt-3",
             ),
 
             ui.hr(class_="my-4"),
@@ -226,13 +236,12 @@ def landing_page_ui():
                 ui.output_text("api_error_msg"),
                 ui.input_action_button(
                     "btn_run", "Run Query",
-                    class_="btn btn-dark btn-lg",
-                    style="letter-spacing:.05em;",
+                    class_="btn btn-dark",
                 ),
-                class_="text-center",
+                class_="d-grid col-4 mx-auto text-center",
             ),
 
-            class_="card border-0 p-5 w-100",
+            class_="card p-5 w-100",
             style="max-width:860px; border-radius:12px; box-shadow:0 4px 32px rgba(0,0,0,.08);",
         ),
         id="landing_page",
@@ -244,44 +253,40 @@ def landing_page_ui():
 def _loading_overlay(fetched, total):
     pct       = int((fetched / total) * 100) if total > 0 else None
     bar_width = f"{pct}%" if pct is not None else "100%"
-    animated  = "progress-bar-animated progress-bar-striped" if pct is None else ""
     return ui.div(
         landing_page_ui(),
         ui.div(
             ui.div(
                 ui.div(
                     ui.h5("Fetching from ClinicalTrials.gov…",
-                          style="margin-bottom:.5rem; color:#1a1a2e;"),
+                          class_="mb-2 text-muted"),
                     ui.p(
                         f"Retrieved {fetched:,} of {total:,} studies" if total > 0
                         else "Connecting…",
-                        style="color:#888; font-size:.85rem; margin-bottom:1rem;",
+                        class_="fs-6 text-muted mb-3",
                     ),
                     ui.div(
                         ui.div(
-                            class_=f"progress-bar {animated}", role="progressbar",
-                            style=(
-                                f"width:{bar_width}; background:#1a1a2e;"
-                                " transition:width .4s ease;"
-                            ),
-                            **{"aria-valuenow": str(pct or 0),
-                               "aria-valuemin": "0", "aria-valuemax": "100"},
+                            f"{pct}%",
+                            class_="progress-bar",
+                            role="progressbar",
+                            style=f"width:{bar_width};",
+                            **{
+                                "aria-valuenow": str(pct or 0),
+                                "aria-valuemin": "0",
+                                "aria-valuemax": "100",
+                            },
                         ),
                         class_="progress",
-                        style="height:6px; border-radius:3px; background:#e0e0e0;",
                     ),
-                    style=(
-                        "background:#fff; border-radius:12px; padding:2.5rem 3rem;"
-                        " box-shadow:0 8px 40px rgba(0,0,0,.15);"
-                        " text-align:center; min-width:360px;"
-                    ),
+                    class_="bg-white rounded-3 p-5 shadow text-center",
                 ),
                 class_="d-flex align-items-center justify-content-center w-100 h-100",
             ),
             class_="position-fixed",
             style=(
                 "inset:0; background:rgba(245,245,247,.85);"
-                " z-index:9999; backdrop-filter:blur(3px);"
+                " z-index:999; backdrop-filter:blur(3px);"
             ),
         ),
     )
@@ -291,8 +296,8 @@ def _loading_overlay(fetched, total):
 
 def landing_server(input, output, session,
                    show_main, is_loading, load_progress,
-                   api_data, upload_data, upload_data_raw, api_error,
-                   log_entries, run_fetch_fn, read_uploaded_csv_fn,
+                   api_data, upload_data, api_error,
+                   log_fn, run_fetch_fn, read_uploaded_csv_fn,
                    process_fn, fetch_pubs_fn):
 
     # ── Safe helpers ──────────────────────────────────────────────────────────
@@ -329,8 +334,6 @@ def landing_server(input, output, session,
     @reactive.effect
     @reactive.event(input.btn_run)
     async def _on_run():
-        is_loading.set(True)
-        load_progress.set((0, 0))
         success = await run_fetch_fn(_query_kwargs_from_land())
         await asyncio.sleep(0)
         if success:
@@ -345,9 +348,7 @@ def landing_server(input, output, session,
         ui.update_text("query_intr_land", value="")
         ui.update_text("query_term_land", value="")
         ui.update_text("query_locn_land", value="")
-        log_entries.set(log_entries.get() + [
-            (datetime.now().strftime("%H:%M:%S"), "info", "Returned to search page.")
-        ])
+        log_fn("Returned to search page.")
         api_data.set(None)
         upload_data.set(None)
         show_main.set(False)
@@ -383,19 +384,12 @@ def landing_server(input, output, session,
                 await asyncio.sleep(0)
             api_data.set(None)
             upload_data.set(df)
-            upload_data_raw.set(df)
-            log_entries.set(log_entries.get() + [(
-                datetime.now().strftime("%H:%M:%S"), "ok",
-                f"Uploaded {name}: {len(df)} rows x {len(df.columns)} columns"
-            )])
-            _upload_msg.set(f"✓  {name}  ({len(df):,} rows)")
+            log_fn(f"Uploaded {name}: {len(df)} rows x {len(df.columns)} columns", level="ok")
+            _upload_msg.set(f"Just uploaded:  {name}  ({len(df):,} rows)")
             show_main.set(True)
         except Exception as e:
-            log_entries.set(log_entries.get() + [(
-                datetime.now().strftime("%H:%M:%S"), "error",
-                f"Error reading {name}: {e}"
-            )])
-            _upload_msg.set(f"⚠  Could not read {name}")
+            log_fn(f"Error reading {name}: {e}", level="error")
+            _upload_msg.set(f"Error:  Could not read {name}")
         finally:
             is_loading.set(False)
             load_progress.set((0, 0))

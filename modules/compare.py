@@ -29,7 +29,7 @@ def compare_ui():
                         ui.div(ui.output_text("compare_upload_status"),
                                class_="text-muted small mt-1",
                                style="min-height:1.1rem;"),
-                        style="text-align:center; padding:.5rem;",
+                        class_="text-center p-2",
                     ),
                 ),
                 ui.card(
@@ -43,7 +43,7 @@ def compare_ui():
                             "download_processed", "Download CSV",
                             class_="btn btn-dark",
                         ),
-                        style="text-align:center; padding:.5rem;",
+                        class_="text-center p-2",
                     ),
                 ),
                 col_widths=[6, 6],

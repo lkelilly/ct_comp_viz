@@ -85,7 +85,7 @@ def trial_summary_server(input, output, session, active_data):
         df = active_data()
         if df is None or df.empty:
             return ui.p("No data loaded. Run a query first.",
-                        style="color:#aaa; padding:2rem;")
+                        class_="text-muted p-4 text-center")
 
         summary = _build_summary(df)
 

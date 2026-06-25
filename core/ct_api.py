@@ -139,7 +139,7 @@ def _paginate(params, max_results, progress_cb):
 
         time.sleep(0.2)
 
-    return studies, (total_count or 0)
+    return studies, total_count
 
 
 def _get(params):

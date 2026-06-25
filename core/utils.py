@@ -59,6 +59,39 @@ def build_filter_kwargs(input) -> dict:
     )
 
 
+def input_exists(input, name):
+    """True if a (possibly dynamically-rendered) input exists and has a value
+    available on this reactive flush."""
+    try:
+        input[name]()
+        return True
+    except Exception:
+        return False
+
+
+def resolve_selection(input, input_id, valid_values):
+    """Active selection for a checkbox group, falling back to *all* valid values
+    when the input doesn't exist yet, holds a stale selection from a previous
+    dataset, or is empty. `valid_values` = the column's current unique values."""
+    valid = set(valid_values)
+    raw = list(input[input_id]()) if input_exists(input, input_id) else []
+    return raw if raw and set(raw).issubset(valid) else sorted(valid)
+
+
+def filter_by_selections(df, input, mappings):
+    """Filter `df` by one or more checkbox-group selections. `mappings` is an
+    iterable of (column, input_id) pairs. Columns absent from `df` are skipped;
+    a selection covering every value is a no-op."""
+    for col, input_id in mappings:
+        if col not in df.columns:
+            continue
+        valid = df[col].dropna().unique()
+        keep = resolve_selection(input, input_id, valid)
+        if set(keep) != set(valid):
+            df = df[df[col].isin(keep)]
+    return df
+
+
 def _is_isa_master_protocol(title: str, primary_outcome_text: str) -> bool:
     """Return True if this is a master protocol study with ISA in the primary outcome."""
     title_lower = (title or "").lower()
@@ -445,123 +478,3 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "") -> pd.DataFrame:
             df["compound"] = ""
 
     return df
-
-
-def filter_upload_data(df: pd.DataFrame, kwargs: dict) -> pd.DataFrame:
-    """
-    Apply sidebar filter kwargs to an already-processed upload DataFrame.
-    Returns a filtered, sorted, and capped copy. Never mutates the input.
-    """
-    import re
-
-    mask = pd.Series(True, index=df.index)
-
-    # ── Substring filters ─────────────────────────────────────────────────────
-    def _sub(col, val):
-        nonlocal mask
-        if val and col in df.columns:
-            mask &= df[col].fillna("").str.contains(val, case=False, na=False)
-
-    _sub("conditions",    kwargs.get("query_cond"))
-    _sub("interventions", kwargs.get("query_intr"))
-    _sub("sponsor",       kwargs.get("query_spons"))
-    _sub("study_title",   kwargs.get("query_titles"))
-    _sub("nct_number",    kwargs.get("query_id"))
-
-    term = kwargs.get("query_term")
-    if term:
-        text_cols = [c for c in ("study_title", "conditions", "interventions",
-                                  "brief_summary", "sponsor") if c in df.columns]
-        combined = df[text_cols].fillna("").agg(" ".join, axis=1)
-        mask &= combined.str.contains(term, case=False, na=False)
-
-    outc = kwargs.get("query_outc")
-    if outc:
-        outc_cols = [c for c in ("primary_outcome_measures", "secondary_outcome_measures")
-                     if c in df.columns]
-        if outc_cols:
-            combined_outc = df[outc_cols].fillna("").agg(" ".join, axis=1)
-            mask &= combined_outc.str.contains(outc, case=False, na=False)
-
-    # query_locn, filter_sex, filter_healthy, filter_age_* → no columns, skip silently
-
-    # ── Phase filter ──────────────────────────────────────────────────────────
-    phases = [p for p in (kwargs.get("filter_phase") or []) if p]
-    if phases and "phases" in df.columns:
-        norm_selected = {re.sub(r"[^a-z0-9]", "", p.lower()) for p in phases}
-
-        def _phase_tokens(cell):
-            return {re.sub(r"[^a-z0-9]", "", t.lower()) for t in str(cell).split(",")}
-
-        mask &= df["phases"].apply(lambda c: bool(_phase_tokens(c) & norm_selected))
-
-    # ── Status filter ─────────────────────────────────────────────────────────
-    statuses = [s for s in (kwargs.get("filter_status") or []) if s]
-    if statuses and "study_status" in df.columns:
-        mask &= df["study_status"].isin(statuses)
-
-    # ── Study type filter ─────────────────────────────────────────────────────
-    study_types = [t for t in (kwargs.get("filter_study_type") or []) if t]
-    if study_types and "study_type" in df.columns:
-        mask &= df["study_type"].isin(study_types)
-
-    # ── Funder type filter ────────────────────────────────────────────────────
-    funders = [f for f in (kwargs.get("filter_funder") or []) if f]
-    if funders and "funder_type" in df.columns:
-        mask &= df["funder_type"].isin(funders)
-
-    # ── Results filter ────────────────────────────────────────────────────────
-    results_val = kwargs.get("filter_results")
-    if results_val and results_val != "Any" and "study_results" in df.columns:
-        target = "Yes" if results_val == "With results" else "No"
-        mask &= df["study_results"] == target
-
-    # ── Enrollment range ──────────────────────────────────────────────────────
-    enroll_min = kwargs.get("filter_enroll_min")
-    enroll_max = kwargs.get("filter_enroll_max")
-    if (enroll_min is not None or enroll_max is not None) and "enrollment" in df.columns:
-        enroll = pd.to_numeric(df["enrollment"], errors="coerce")
-        if enroll_min is not None:
-            mask &= enroll.fillna(0) >= enroll_min
-        if enroll_max is not None:
-            mask &= enroll.fillna(0) <= enroll_max
-
-    # ── Date ranges ───────────────────────────────────────────────────────────
-    def _date_range(col, from_str, to_str):
-        nonlocal mask
-        if col not in df.columns:
-            return
-        series = df[col]
-        if from_str:
-            try:
-                mask &= series.notna() & (series >= pd.Timestamp(from_str))
-            except Exception:
-                pass
-        if to_str:
-            try:
-                mask &= series.notna() & (series <= pd.Timestamp(to_str))
-            except Exception:
-                pass
-
-    _date_range("start_date",
-                kwargs.get("filter_start_from"), kwargs.get("filter_start_to"))
-    _date_range("primary_completion_date",
-                kwargs.get("filter_completion_from"), kwargs.get("filter_completion_to"))
-
-    df = df[mask].copy()
-
-    # ── Sort ──────────────────────────────────────────────────────────────────
-    sort_map = {
-        "StartDate:desc":       ("start_date",  False),
-        "StartDate:asc":        ("start_date",  True),
-        "EnrollmentCount:desc": ("enrollment",  False),
-    }
-    sort_spec = sort_map.get(kwargs.get("sort_order") or "")
-    if sort_spec is not None:
-        col, asc = sort_spec
-        if col in df.columns:
-            df = df.sort_values(col, ascending=asc, na_position="last")
-
-    # ── Cap results ───────────────────────────────────────────────────────────
-    max_results = int(kwargs.get("max_results") or 500)
-    return df.head(max_results).reset_index(drop=True)

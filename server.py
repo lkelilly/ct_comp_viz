@@ -42,7 +42,6 @@ def server(input, output, session):
 
     api_data        = reactive.Value(None)
     upload_data     = reactive.Value(None)
-    upload_data_raw = reactive.Value(None)   # original upload; no overwritten after set
     compare_data    = reactive.Value(None)
     api_error       = reactive.Value(None)
     log_entries     = reactive.Value([])
@@ -137,7 +136,6 @@ def server(input, output, session):
 
             api_data.set(df)
             upload_data.set(None)
-            upload_data_raw.set(None)
             return True
         except CTGovAPIError as e:
             _log(f"API error: {e}", level="error")
@@ -154,25 +152,6 @@ def server(input, output, session):
 
         return False
 
-    # ── Reset filter checkboxes when dataset changes ──────────────────────────
-
-    @reactive.effect
-    def _reset_filters_on_new_data():
-        df = active_data()
-        if df is None or df.empty:
-            return
-        for col, input_id in [
-            ("compound",   "viz_compound"),
-            ("indication", "viz_indication"),
-            ("phases",     "viz_phase"),
-            ("compound",   "ti_compound"),
-            ("indication", "ti_indication"),
-            ("phases",     "ti_phase"),
-        ]:
-            if col in df.columns:
-                choices = sorted(df[col].dropna().unique().tolist())
-                ui.update_checkbox_group(input_id, choices=choices, selected=choices)
-
     # ── Console log ───────────────────────────────────────────────────────────
 
     @output(suspend_when_hidden=False)
@@ -181,9 +160,9 @@ def server(input, output, session):
         entries = log_entries.get()
         if not entries:
             return ui.p("No log entries yet. Run a query to see output.",
-                        style="color:#555; font-style:italic;")
+                        class_="text-muted fst-italic")
         colors = {"info": "#aaa", "ok": "#4ec94e", "warn": "#f0c040", "error": "#f04040"}
-        icons  = {"info": ">",   "ok": "✓",        "warn": "⚠",       "error": "✗"}
+        icons  = {"info": ">", "ok": "success: ", "warn": "warning: ", "error": "error: "}
         lines  = []
         for ts, level, msg in entries:
             color = colors.get(level, "#aaa")
@@ -212,9 +191,8 @@ def server(input, output, session):
         load_progress=load_progress,
         api_data=api_data,
         upload_data=upload_data,
-        upload_data_raw=upload_data_raw,
         api_error=api_error,
-        log_entries=log_entries,
+        log_fn=_log,
         run_fetch_fn=_run_fetch,
         read_uploaded_csv_fn=read_uploaded_csv,
         process_fn=process_raw_ctgov,

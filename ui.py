@@ -68,32 +68,31 @@ app_ui = ui.page_bootstrap(
         ui.tags.style("""
             body { font-family: system-ui, Avenir, Helvetica, Arial, sans-serif; margin: 0; }
             .bslib-sidebar-layout { height: 100vh; }
-            /* Only disable scroll on the outermost bslib layout */
-            .bslib-sidebar-layout:not(.bslib-sidebar-layout .bslib-sidebar-layout) {
-                overflow: hidden !important;
+            
+            /* Override rules */
+            .bslib-sidebar-layout > .main {
+                padding-left: 15px !important;
+                padding-right: 0 !important;
             }
-            .accordion-button { font-size: .85rem; }
+            .tab-content > .tab-pane {
+                margin-top: 0 !important;
+            }
 
-            /* Shared section/sidebar header */
-            .section-header {
-                letter-spacing: .08em;
-                color: #333;
-                font-size: .85rem;
-                font-weight: 700;
-            }
+            /* Small muted hint text */
+            .hint-text { font-size: .75rem; color: #888; }
 
             /* Selection group styling */
             .shiny-input-checkboxgroup label ~ .shiny-options-group,
             .shiny-input-radiogroup label ~ .shiny-options-group {
                 margin-top: 0;
             }
-            @media (max-width: 1519px) {
+            @media (max-width: 1830px) {
                 #viz_plot .ytick text { display: none; }
             }
         """)
     ),
     ui.div(ui.input_checkbox("show_main_flag", "", value=False),
-           style="display:none;"),
+           class_="d-none"),
     ui.panel_conditional("!input.show_main_flag", ui.output_ui("landing_view")),
     ui.panel_conditional("input.show_main_flag", main_layout),
 )

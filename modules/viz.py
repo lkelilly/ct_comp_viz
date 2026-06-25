@@ -5,9 +5,13 @@ Visualization tab — Plotly Gantt-style timeline chart.
 
 """
 
+import asyncio
+
 import pandas as pd
 import plotly.graph_objects as go
 from shiny import reactive, render, ui
+
+from core.utils import filter_by_selections
 
 MAX_VIZ_TRIALS = 300
 
@@ -55,7 +59,7 @@ _COL_LABELS = {"indication": "Indication", "compound": "Compound", "phases": "Ph
 
 def viz_ui():
     sidebar = ui.sidebar(
-        ui.h6("SORTING OPTIONS", class_="section-header"),
+        ui.h6("SORTING OPTIONS", class_="fs-6 fw-bold"),
         ui.input_radio_buttons(
             "viz_group_by", "Group rows by:",
             choices={"compound": "Compound", "indication": "Indication", "phases": "Phase"},
@@ -77,18 +81,18 @@ def viz_ui():
             selected="start_date",
         ),
 
-        ui.hr(style="margin:.4rem 0;"),
+        ui.hr(class_="my-1"),
         ui.div(
-            ui.h6("TRIAL FILTERS", class_="section-header"),
+            ui.h6("TRIAL FILTERS", class_="fs-6 fw-bold"),
             ui.tags.small("Ctrl+Click to select only one item.",
-                          class_="d-block m-0", style="font-size:.75rem; color:#888;"),
+                          class_="d-block m-0 text-muted"),
         ),
         ui.output_ui("viz_compound_ui"),
         ui.output_ui("viz_indication_ui"),
         ui.output_ui("viz_phase_ui"),
 
-        ui.hr(style="margin:.4rem 0;"),
-        ui.h6("DISPLAY OPTIONS", class_="section-header mb-2"),
+        ui.hr(class_="my-1"),
+        ui.h6("DISPLAY OPTIONS", class_="fs-6 fw-bold mb-2"),
         ui.input_radio_buttons(
             "viz_reflect_size", "Bar width reflects enrollment:",
             choices={"yes": "Yes", "no": "No"},
@@ -109,7 +113,6 @@ def viz_ui():
         ui.input_slider("viz_fig_height",  "Figure height multiplier (%):", 20, 500, 100, step=10),
 
         width="280px",
-        style="overflow-y:hidden;",
         id="viz_sidebar",
     )
 
@@ -132,12 +135,12 @@ def viz_server(input, output, session, active_data):
 
     # ── Dynamic filter widgets ────────────────────────────────────────────────
 
-    @output
+    @output(suspend_when_hidden=False)
     @render.ui
     def viz_compound_ui():
         df = active_data()
         if df is None or df.empty:
-            return ui.p("No data loaded.", class_="fs-6", style="color:#aaa;")
+            return ui.p("No data loaded.", class_="fs-6 text-muted")
         choices = sorted(df["compound"].dropna().unique().tolist())
         return ui.input_checkbox_group(
             "viz_compound", "Compound:",
@@ -145,7 +148,7 @@ def viz_server(input, output, session, active_data):
             selected=choices,
         )
 
-    @output
+    @output(suspend_when_hidden=False)
     @render.ui
     def viz_indication_ui():
         df = active_data()
@@ -158,7 +161,7 @@ def viz_server(input, output, session, active_data):
             selected=choices,
         )
 
-    @output
+    @output(suspend_when_hidden=False)
     @render.ui
     def viz_phase_ui():
         df = active_data()
@@ -178,25 +181,11 @@ def viz_server(input, output, session, active_data):
         df = active_data()
         if df is None or df.empty:
             return pd.DataFrame(), 0
-        all_compounds   = set(df["compound"].dropna().unique())
-        all_indications = set(df["indication"].dropna().unique())
-        all_phases      = set(df["phases"].dropna().unique())
-
-        raw_compounds   = list(input.viz_compound())   if _input_exists(input, "viz_compound")   else []
-        raw_indications = list(input.viz_indication())  if _input_exists(input, "viz_indication") else []
-        raw_phases      = list(input.viz_phase())       if _input_exists(input, "viz_phase")      else []
-
-        # Only filter if all selected values belong to the current dataset; otherwise show all
-        compounds   = raw_compounds   if raw_compounds   and set(raw_compounds).issubset(all_compounds)   else sorted(all_compounds)
-        indications = raw_indications if raw_indications and set(raw_indications).issubset(all_indications) else sorted(all_indications)
-        phases      = raw_phases      if raw_phases      and set(raw_phases).issubset(all_phases)          else sorted(all_phases)
-
-        if set(compounds) != all_compounds:
-            df = df[df["compound"].isin(compounds)]
-        if set(indications) != all_indications:
-            df = df[df["indication"].isin(indications)]
-        if set(phases) != all_phases:
-            df = df[df["phases"].isin(phases)]
+        df = filter_by_selections(df, input, [
+            ("compound",   "viz_compound"),
+            ("indication", "viz_indication"),
+            ("phases",     "viz_phase"),
+        ])
         before = len(df)
         df = df.dropna(subset=["start_date", "completion_date"])
         df["start_date"]      = pd.to_datetime(df["start_date"])
@@ -227,55 +216,46 @@ def viz_server(input, output, session, active_data):
 
     # ── Plot ──────────────────────────────────────────────────────────────────
 
-    @output
+    @output(suspend_when_hidden=False)
     @render.ui
     def viz_notice():
         dropped = viz_dropped_count()
         if dropped <= 0:
             return ui.div()
         return ui.div(
-            ui.tags.i(class_="bi bi-info-circle", style="margin-right:.4rem;"),
+            ui.tags.i(class_="bi bi-info-circle me-1"),
             f"{dropped:,} trial(s) in `Trial Information` not displayed due to missing or invalid start/end date",
-            style=(
-                "background:#fff8e1; border:1px solid #ffe082; border-radius:8px;"
-                " padding:.5rem .75rem; font-size:0.85rem; color:#7b6000; margin:0 1rem .5rem 1rem;"
-            ),
+            class_="alert alert-warning small mx-3 mb-2 py-2",
         )
 
     @output
     @render.ui
-    def viz_plot():
+    async def viz_plot():
         df = viz_data()
         if df.empty:
             return ui.div(
                 ui.p("No data to display. Load data and adjust filters.",
-                     style="color:#aaa;"),
-                style=(
-                    "height:40vh; display:flex; align-items:center; justify-content:center;"
-                    " border:2px solid #ddd; border-radius:8px; margin:1rem;"
-                ),
+                     class_="text-muted"),
+                class_="card d-flex align-items-center justify-content-center border rounded m-3",
             )
 
         n = len(df)
         if n > MAX_VIZ_TRIALS:
             return ui.div(
                 ui.h5("Too many trials to render! :-(",
-                      style="color:#c0392b; margin-bottom:.5rem;"),
+                      class_="text-danger my-2"),
                 ui.p(f"{n:,} trials match your current filters."),
                 ui.p(
                     f"The visualization supports up to {MAX_VIZ_TRIALS:,} at a time. "
                     "Please narrow your search using the filters on the left (compound, indication, etc.).",
-                    style="color:#555; max-width:520px; text-align:center;",
+                    class_="text-center mx-auto text-muted p-1",
                 ),
-                style=(
-                    "height:40vh; display:flex; flex-direction:column; align-items:center;"
-                    " justify-content:center; border:2px solid #e74c3c; border-radius:8px;"
-                    " margin:1rem; padding:.5rem .75rem; background:#fff8f8;"
-                ),
+                class_="d-flex card flex-column align-items-center justify-content-center border border-danger rounded m-3",
             )
 
         with ui.Progress(min=0, max=3) as p:
             p.set(0, message="Building visualization", detail="Preparing data...")
+            await asyncio.sleep(0)
 
             bar_w_mult   = input.viz_bar_width()  / 100
             font_mult    = input.viz_font_size()  / 100
@@ -325,6 +305,7 @@ def viz_server(input, output, session, active_data):
             fig_height = max(300, data_px, legend_px)
 
             p.set(1, message="Building visualization", detail="Drawing chart...")
+            await asyncio.sleep(0)
 
             fig = go.Figure()
 
@@ -369,6 +350,7 @@ def viz_server(input, output, session, active_data):
             )
 
             p.set(2, message="Building visualization", detail="Adding trial bands...")
+            await asyncio.sleep(0)
 
             # ── Study bars ────────────────────────────────────────────────────────
             if mark_primary:
@@ -492,6 +474,7 @@ def viz_server(input, output, session, active_data):
                     )
 
             p.set(3, message="Building visualization", detail="Adding details...")
+            await asyncio.sleep(0)
 
             base_font = 12 * font_mult
             fig.update_layout(
@@ -508,7 +491,7 @@ def viz_server(input, output, session, active_data):
                     entrywidth=170,
                     entrywidthmode="pixels",
                 ),
-                margin=dict(l=260, r=220, t=50, b=60),
+                margin=dict(l=240, r=180, t=50, b=60),
                 plot_bgcolor="#ffffff",
                 paper_bgcolor="#ffffff",
             )
@@ -578,11 +561,3 @@ def _fmt_date(d):
         return pd.Timestamp(d).strftime("%Y-%m-%d")
     except Exception:
         return str(d)
-
-
-def _input_exists(input_obj, name):
-    try:
-        input_obj[name]()
-        return True
-    except Exception:
-        return False

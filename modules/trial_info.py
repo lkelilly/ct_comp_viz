@@ -7,6 +7,8 @@ Trial Information tab — UI and server logic.
 from itables import to_html_datatable, JavascriptFunction
 from shiny import render, ui
 
+from core.utils import filter_by_selections, input_exists
+
 
 TRIAL_TABLE_LABELS = {
     "nct_number":                 "NCT Number",
@@ -70,16 +72,16 @@ document.addEventListener('click', function(e) {
 def trial_info_ui():
     sidebar = ui.sidebar(
         ui.div(
-            ui.h6("TRIAL FILTERS", class_="section-header"),
+            ui.h6("TRIAL FILTERS", class_="fs-6 fw-bold"),
             ui.tags.small("Ctrl+Click to select only one item.",
-                          class_="d-block m-0", style="font-size:.75rem; color:#888;"),
+                          class_="d-block m-0 text-muted"),
         ),
         ui.output_ui("ti_compound_ui"),
         ui.output_ui("ti_indication_ui"),
         ui.output_ui("ti_phase_ui"),
 
-        ui.hr(style="margin:.4rem 0;"),
-        ui.h6("SORT", class_="section-header"),
+        ui.hr(class_="my-1"),
+        ui.h6("SORT", class_="fs-6 fw-bold"),
         ui.input_select(
             "ti_sort_by", "Sort rows by:",
             choices={
@@ -102,18 +104,9 @@ def trial_info_ui():
             sidebar,
             ui.div(
                 ui.output_ui("trial_table"),
-                class_="m-3",
             ),
         ),
     )
-
-
-def _input_exists(input_obj, name):
-    try:
-        input_obj[name]()
-        return True
-    except Exception:
-        return False
 
 
 def trial_info_server(input, output, session, active_data):
@@ -151,29 +144,15 @@ def trial_info_server(input, output, session, active_data):
         df = active_data()
         if df is None or df.empty:
             return ui.p("No data loaded. Run a query first.",
-                        style="color:#aaa; padding:2rem;")
+                        class_="text-muted p-4 text-center")
 
-        all_compounds   = set(df["compound"].dropna().unique())
-        all_indications = set(df["indication"].dropna().unique())
-        all_phases      = set(df["phases"].dropna().unique())
+        df = filter_by_selections(df, input, [
+            ("compound",   "ti_compound"),
+            ("indication", "ti_indication"),
+            ("phases",     "ti_phase"),
+        ])
 
-        raw_compounds   = list(input.ti_compound())   if _input_exists(input, "ti_compound")   else []
-        raw_indications = list(input.ti_indication())  if _input_exists(input, "ti_indication") else []
-        raw_phases      = list(input.ti_phase())       if _input_exists(input, "ti_phase")      else []
-
-        # Only filter if all selected values belong to the current dataset; otherwise show all
-        compounds   = raw_compounds   if raw_compounds   and set(raw_compounds).issubset(all_compounds)   else sorted(all_compounds)
-        indications = raw_indications if raw_indications and set(raw_indications).issubset(all_indications) else sorted(all_indications)
-        phases      = raw_phases      if raw_phases      and set(raw_phases).issubset(all_phases)          else sorted(all_phases)
-
-        if set(compounds) != all_compounds:
-            df = df[df["compound"].isin(compounds)]
-        if set(indications) != all_indications:
-            df = df[df["indication"].isin(indications)]
-        if set(phases) != all_phases:
-            df = df[df["phases"].isin(phases)]
-
-        sort_col = input.ti_sort_by() if _input_exists(input, "ti_sort_by") else "start_date"
+        sort_col = input.ti_sort_by() if input_exists(input, "ti_sort_by") else "start_date"
         if sort_col in df.columns:
             df = df.sort_values(sort_col, na_position="last")
 
@@ -202,10 +181,10 @@ def trial_info_server(input, output, session, active_data):
                     "  return data.split(' | ').map(function(part) {"
                     "    part = part.trim();"
                     "    if (part.indexOf('http://') === 0 || part.indexOf('https://') === 0) {"
-                    "      return '<a href=\"' + part + '\" target=\"_blank\">' + part + '</a>';"
+                    "      return '<a href=\"' + part + '\" target=\"_blank\" class=\"d-block\">' + part + '</a>';"
                     "    }"
                     "    return part;"
-                    "  }).join(' | ');"
+                    "  }).join('');"
                     "}"
                 ),
             })
