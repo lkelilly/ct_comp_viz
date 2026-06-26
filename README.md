@@ -1,3 +1,6 @@
+### Now Live on:
+**https://posit-connect.am.lilly.com/content/703605bb-fc13-40fc-b0af-6cbe236d624d**
+
 ## To Run It Locally
 
 1. Clone the repo
@@ -24,7 +27,7 @@
    ```
    Then open `http://127.0.0.1:8000` in your browser.
 
-### Dev Notes
+## Dev Notes
 
 `indication-rule` branch: 
 Changes from the initial version: 
