@@ -397,11 +397,17 @@ def add_publications(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
+    if df.empty:
+        df["relevant_publication"] = "No Article Found"
+        df["publication_source"] = "NA"
+        return df
+
     if "publications" not in df.columns:
         df["publications"] = "NA"
 
     nct_col = "nct_number" if "nct_number" in df.columns else None
     nct_source_map: dict = {}
+    nct_map: dict = {}
 
     try:
         # Step 1: seed PMIDs from CT.gov references
@@ -431,7 +437,6 @@ def add_publications(df: pd.DataFrame) -> pd.DataFrame:
 
         # Step 3: Combine + EFetch
         all_pmids = list(dict.fromkeys(seed_pmids + esearch_pmids))
-        nct_map: dict = {}
         if all_pmids:
             xml_root = _efetch_xml(all_pmids)
             pmid_map = _parse_pmid_to_ncts(xml_root)

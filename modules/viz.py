@@ -190,7 +190,7 @@ def viz_server(input, output, session, active_data):
         df = df.dropna(subset=["start_date", "completion_date"])
         df["start_date"]      = pd.to_datetime(df["start_date"])
         df["completion_date"] = pd.to_datetime(df["completion_date"])
-        df = df[df["completion_date"] > df["start_date"]]
+        df = df[df["completion_date"] >= df["start_date"]]
         return df, before
 
     @reactive.calc
@@ -234,9 +234,9 @@ def viz_server(input, output, session, active_data):
         df = viz_data()
         if df.empty:
             return ui.div(
-                ui.p("No data to display. Load data and adjust filters.",
+                ui.p("No data returned. Check your query message.",
                      class_="text-muted"),
-                class_="card d-flex align-items-center justify-content-center border rounded m-3",
+                class_="card d-flex align-items-center justify-content-center rounded m-3",
             )
 
         n = len(df)
