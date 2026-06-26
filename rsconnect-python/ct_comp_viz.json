@@ -1,0 +1,12 @@
+{
+    "https://posit-connect.am.lilly.com": {
+        "server_url": "https://posit-connect.am.lilly.com",
+        "filename": "/home/l141195/proj/ct_comp_viz",
+        "app_url": "https://posit-connect.am.lilly.com/content/703605bb-fc13-40fc-b0af-6cbe236d624d/",
+        "app_id": "7900",
+        "app_guid": "703605bb-fc13-40fc-b0af-6cbe236d624d",
+        "title": "Dashboard Testing",
+        "app_mode": "python-shiny",
+        "app_store_version": 1
+    }
+}
