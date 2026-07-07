@@ -132,7 +132,7 @@ def server(input, output, session):
                 await asyncio.sleep(0)
 
             _log(f"Processed DataFrame: indication + compound columns added", level="ok")
-            _log(f"Publication enrichment complete", level="ok")
+            _log(f"Publication adding complete", level="ok")
 
             api_data.set(df)
             upload_data.set(None)

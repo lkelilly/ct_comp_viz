@@ -133,7 +133,7 @@ def landing_page_ui():
             " PubMed to help summarize trial information, provide details, and render timelines.", 
                  class_="fs-6 fw-normal text-start text-muted mb-2"),
 
-            ui.h6("Option 1. Upload Data to Proces", class_="fw-bold mt-1 mb-1"),
+            ui.h6("Option 1. Upload Data to Process", class_="fw-bold mt-1 mb-1"),
             ui.div(
                 ui.input_file("upload_file", None, accept=".csv",
                               button_label="Choose CSV", multiple=False),
@@ -250,47 +250,6 @@ def landing_page_ui():
     )
 
 
-def _loading_overlay(fetched, total):
-    pct       = int((fetched / total) * 100) if total > 0 else None
-    bar_width = f"{pct}%" if pct is not None else "100%"
-    return ui.div(
-        landing_page_ui(),
-        ui.div(
-            ui.div(
-                ui.div(
-                    ui.h5("Fetching from ClinicalTrials.gov…",
-                          class_="mb-2 text-muted"),
-                    ui.p(
-                        f"Retrieved {fetched:,} of {total:,} studies" if total > 0
-                        else "Connecting…",
-                        class_="fs-6 text-muted mb-3",
-                    ),
-                    ui.div(
-                        ui.div(
-                            f"{pct}%",
-                            class_="progress-bar",
-                            role="progressbar",
-                            style=f"width:{bar_width};",
-                            **{
-                                "aria-valuenow": str(pct or 0),
-                                "aria-valuemin": "0",
-                                "aria-valuemax": "100",
-                            },
-                        ),
-                        class_="progress",
-                    ),
-                    class_="bg-white rounded-3 p-5 shadow text-center",
-                ),
-                class_="d-flex align-items-center justify-content-center w-100 h-100",
-            ),
-            class_="position-fixed",
-            style=(
-                "inset:0; background:rgba(245,245,247,.85);"
-                " z-index:999; backdrop-filter:blur(3px);"
-            ),
-        ),
-    )
-
 
 # ── Server logic ──────────────────────────────────────────────────────────────
 
@@ -324,9 +283,6 @@ def landing_server(input, output, session,
     def landing_view():
         if show_main.get():
             return None
-        if is_loading.get():
-            fetched, total = load_progress.get()
-            return _loading_overlay(fetched, total)
         return landing_page_ui()
 
     # ── Run Query ─────────────────────────────────────────────────────────────
@@ -334,10 +290,10 @@ def landing_server(input, output, session,
     @reactive.effect
     @reactive.event(input.btn_run)
     async def _on_run():
+        show_main.set(True)
         success = await run_fetch_fn(_query_kwargs_from_land())
-        await asyncio.sleep(0)
-        if success:
-            show_main.set(True)
+        if not success:
+            show_main.set(False)
 
     # ── Back button ───────────────────────────────────────────────────────────
 
@@ -348,12 +304,6 @@ def landing_server(input, output, session,
         ui.update_text("query_intr_land", value="")
         ui.update_text("query_term_land", value="")
         ui.update_text("query_locn_land", value="")
-        ui.update_checkbox_group("viz_compound",   selected=[])
-        ui.update_checkbox_group("viz_indication", selected=[])
-        ui.update_checkbox_group("viz_phase",      selected=[])
-        ui.update_checkbox_group("ti_compound",    selected=[])
-        ui.update_checkbox_group("ti_indication",  selected=[])
-        ui.update_checkbox_group("ti_phase",       selected=[])
         log_fn("Returned to search page.")
         api_data.set(None)
         upload_data.set(None)
@@ -378,6 +328,7 @@ def landing_server(input, output, session,
         path = f[0]["datapath"]
         is_loading.set(True)
         load_progress.set((0, 0))
+        show_main.set(True)
         try:
             df = read_uploaded_csv_fn(path)
             df = process_fn(df)
@@ -392,8 +343,8 @@ def landing_server(input, output, session,
             upload_data.set(df)
             log_fn(f"Uploaded {name}: {len(df)} rows x {len(df.columns)} columns", level="ok")
             _upload_msg.set(f"Just uploaded:  {name}  ({len(df):,} rows)")
-            show_main.set(True)
         except Exception as e:
+            show_main.set(False)
             log_fn(f"Error reading {name}: {e}", level="error")
             _upload_msg.set(f"Error:  Could not read {name}")
         finally:

@@ -57,6 +57,7 @@ main_layout = ui.page_navbar(
     ),
     title="DEMO",
     id="main_navbar",
+    header=ui.busy_indicators.use(pulse=True),
 )
 
 
@@ -68,7 +69,7 @@ app_ui = ui.page_bootstrap(
         ui.tags.style("""
             body { font-family: system-ui, Avenir, Helvetica, Arial, sans-serif; margin: 0; }
             .bslib-sidebar-layout { height: 100vh; }
-            
+
             /* Override rules */
             .bslib-sidebar-layout > .main {
                 padding-left: 15px !important;
@@ -85,9 +86,6 @@ app_ui = ui.page_bootstrap(
             .shiny-input-checkboxgroup label ~ .shiny-options-group,
             .shiny-input-radiogroup label ~ .shiny-options-group {
                 margin-top: 0;
-            }
-            @media (max-width: 1830px) {
-                #viz_plot .ytick text { display: none; }
             }
         """)
     ),

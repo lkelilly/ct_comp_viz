@@ -228,7 +228,7 @@ def viz_server(input, output, session, active_data):
             class_="alert alert-warning small mx-3 mb-2 py-2",
         )
 
-    @output
+    @output(suspend_when_hidden=False)
     @render.ui
     async def viz_plot():
         df = viz_data()
@@ -319,9 +319,10 @@ def viz_server(input, output, session, active_data):
                 )
                 mid = (group_start + group_end - 1) / 2
                 fig.add_annotation(
-                    x=-0.1, y=mid,
+                    x=0, y=mid,
                     xref="paper", yref="y",
-                    text=f"<b>{grp_val}</b>",
+                    xshift=-120,
+                    text=f"<b>{_wrap_legend_name(grp_val, max_chars=16)}</b>",
                     showarrow=False,
                     xanchor="right",
                     yanchor="middle",
@@ -340,8 +341,9 @@ def viz_server(input, output, session, active_data):
 
             group_label = _COL_LABELS.get(group_col, group_col.capitalize())
             fig.add_annotation(
-                x=-0.1, y=-0.7,
+                x=0, y=-0.7,
                 xref="paper", yref="y",
+                xshift=-70,
                 text=f"Group by: <b>{group_label}</b>",
                 showarrow=False,
                 xanchor="right",
