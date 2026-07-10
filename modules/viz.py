@@ -188,8 +188,8 @@ def viz_server(input, output, session, active_data):
         ])
         before = len(df)
         df = df.dropna(subset=["start_date", "completion_date"])
-        df["start_date"]      = pd.to_datetime(df["start_date"])
-        df["completion_date"] = pd.to_datetime(df["completion_date"])
+        df["start_date"]      = pd.to_datetime(df["start_date"],      errors="coerce")
+        df["completion_date"] = pd.to_datetime(df["completion_date"], errors="coerce")
         df = df[df["completion_date"] >= df["start_date"]]
         return df, before
 
@@ -247,7 +247,7 @@ def viz_server(input, output, session, active_data):
                 ui.p(f"{n:,} trials match your current filters."),
                 ui.p(
                     f"The visualization supports up to {MAX_VIZ_TRIALS:,} at a time. "
-                    "Please narrow your search using the filters on the left (compound, indication, etc.).",
+                    "Please narrow your query by defining more fields (intervention, sponsor, etc.).",
                     class_="text-center mx-auto text-muted p-1",
                 ),
                 class_="d-flex card flex-column align-items-center justify-content-center border border-danger rounded m-3",

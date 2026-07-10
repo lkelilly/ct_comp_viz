@@ -48,8 +48,6 @@ def build_filter_kwargs(input) -> dict:
         filter_results=input.filter_results(),
         filter_age_min=input.filter_age_min(),
         filter_age_max=input.filter_age_max(),
-        filter_enroll_min=input.filter_enroll_min(),
-        filter_enroll_max=input.filter_enroll_max(),
         filter_start_from=_valid_date(input.filter_start_from()),
         filter_start_to=_valid_date(input.filter_start_to()),
         filter_completion_from=_valid_date(input.filter_completion_from()),
@@ -132,15 +130,18 @@ def _match_compound(interventions_str: str, query_intr: str = "") -> str:
     """Derive compound name from interventions string and user's search query."""
     if not isinstance(interventions_str, str) or not interventions_str.strip():
         return ""
-    # Normalize separators (CSV export uses "|", API-derived uses " | ") and strip type prefixes
-    raw_parts = [p.strip() for p in re.split(r'\s*\|\s*', interventions_str) if p.strip()]
-    parts = [re.sub(r'^[A-Z_]+:\s*', '', p) for p in raw_parts]
-    parts = [p for p in parts if p]
+    # Normalize separators (CSV export uses "|", API-derived uses " | ")
+    parts = [p.strip() for p in interventions_str.split('|') if p.strip()]
     parts = [p for p in parts if not _PLACEBO_RE.match(p)]
     if not parts:
         return "Only Placebo Found"
     if not query_intr or not query_intr.strip():
-        first_token = parts[0].split()[0]
+        first_part = parts[0]
+        if ':' in first_part:
+            name_part = first_part.split(':', 1)[1].strip()
+            first_token = name_part.split()[0] if name_part else first_part.split()[0]
+        else:
+            first_token = first_part.split()[0]
         return first_token.title()
 
     if re.search(r'\bOR\b', query_intr, re.IGNORECASE):
@@ -161,6 +162,18 @@ def _join_list(items, key, sep=" | "):
     if not items or not isinstance(items, list):
         return ""
     parts = [str(i[key]) for i in items if isinstance(i, dict) and i.get(key)]
+    return sep.join(parts) if parts else ""
+
+
+def _join_interventions(items, sep=" | "):
+    """Join interventions as 'TYPE: name', falling back to name if type is absent."""
+    if not items or not isinstance(items, list):
+        return ""
+    parts = []
+    for i in items:
+        if isinstance(i, dict) and i.get("name"):
+            t = i.get("type", "")
+            parts.append(f"{t}: {i['name']}" if t else i["name"])
     return sep.join(parts) if parts else ""
 
 
@@ -232,9 +245,10 @@ def _extract_study(study: dict) -> dict:
     # Status & dates
     overall_status          = status_mod.get("overallStatus", "")
     has_results             = study.get("hasResults", False)
-    start_date              = _get(status_mod, "startDateStruct",           "date", default="")
+    start_date              = _get(status_mod, "startDateStruct",            "date", default="")
     primary_completion_date = _get(status_mod, "primaryCompletionDateStruct","date", default="")
     completion_date         = _get(status_mod, "completionDateStruct",       "date", default="")
+    last_update_date        = _get(status_mod, "lastUpdatePostDateStruct",   "date", default="")
 
     # Design
     phases_list = design.get("phases") or []
@@ -250,9 +264,9 @@ def _extract_study(study: dict) -> dict:
     # Eligibility criteria — split into inclusion and exclusion
     inc_criteria, exc_criteria = _split_eligibility(eligibility.get("eligibilityCriteria", ""))
 
-    # Interventions — list of dicts with "name" key
+    # Interventions — list of dicts with "type" and "name" keys
     intr_list  = arms.get("interventions") or []
-    intr_str   = _join_list(intr_list, "name")
+    intr_str   = _join_interventions(intr_list)
 
     # Description
     brief_summary = desc.get("briefSummary", "")
@@ -314,6 +328,7 @@ def _extract_study(study: dict) -> dict:
         "lilly_id":                   lilly_id,
         "ctgov_pmids":                ctgov_pmids,
         "publications":               "NA",
+        "last_update_date":           last_update_date,
     }
 
 
@@ -340,6 +355,7 @@ def studies_to_dataframe(studies: list) -> pd.DataFrame:
         "simplified_primary_outcome", "simplified_secondary_outcome",
         "inclusion_criteria", "exclusion_criteria",
         "sponsor", "funder_type", "other_ids", "lilly_id", "publications",
+        "last_update_date",
     ]
     col_order = [c for c in col_order if c in df.columns]
     return df[col_order]
@@ -379,7 +395,7 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "") -> pd.DataFrame:
     df = df.copy()
 
     # ── Step 1: Standardise dates ─────────────────────────────────────────────
-    for col in ("start_date", "primary_completion_date", "completion_date"):
+    for col in ("start_date", "primary_completion_date", "completion_date", "last_update_date"):
         if col in df.columns:
             # Save original API string before conversion (e.g. "2026-06" or "2024-11-13")
             df[col + "_raw"] = df[col].apply(

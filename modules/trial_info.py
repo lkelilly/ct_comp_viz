@@ -52,7 +52,6 @@ TRUNCATE_COLS = [
 
 TRUNCATE_LENGTH = 200
 
-
 _CTRL_CLICK_JS = """
 document.addEventListener('click', function(e) {
     if (!e.ctrlKey) return;
