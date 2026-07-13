@@ -159,9 +159,28 @@ def _build_diff_datatable(df, diffs_by_nct, pending):
         nct = row.get("nct_number", "")
         row_diffs = {d["field"]: d for d in diffs_by_nct.get(nct, [])}
         is_changed = nct in changed_ncts
+        has_pending = bool(pending.get(nct))
         out = {"_sort": "0" if is_changed else "1"}
 
+        # Build NCT cell explicitly so we can apply the green highlight after save
+        nct_safe = _e(nct)
+        nct_link = (
+            f'<a href="#" class="nct-link" style="font-weight:500" data-nct="{nct_safe}">{nct_safe}</a>'
+        )
+        if is_changed and has_pending:
+            out["nct_number"] = (
+                f'<div style="border-left:3px solid #198754;padding-left:5px;background:#d1e7dd">'
+                f'{nct_link}'
+                f'</div>'
+            )
+        elif is_changed:
+            out["nct_number"] = nct_link
+        else:
+            out["nct_number"] = nct_safe
+
         for col in show_cols:
+            if col == "nct_number":
+                continue  # already handled above
             raw_key = col + "_raw"
             arch_val = row.get(raw_key, row.get(col, ""))
             if arch_val is None or (isinstance(arch_val, float) and math.isnan(arch_val)):
@@ -198,18 +217,8 @@ def _build_diff_datatable(df, diffs_by_nct, pending):
         "  return (data != null ? String(data) : '').replace(/<[^>]+>/g, '');"
         "}"
     )
-    # NCT column is index 1 (after hidden _sort); clickable only on changed rows
-    nct_render = JavascriptFunction(
-        "function(data, type, row) {"
-        "  if (type !== 'display' || !data) return data;"
-        "  if (row[0] !== '0') return data;"
-        "  var nct = String(data);"
-        "  return '<a href=\"#\" class=\"nct-link\" style=\"font-weight:500\" data-nct=\"' + nct + '\">' + nct + '</a>';"
-        "}"
-    )
     col_defs = [
         {"targets": [0], "visible": False, "searchable": False},
-        {"targets": [1], "render": nct_render},
         {"targets": "_all", "render": html_render},
     ]
 
@@ -325,7 +334,7 @@ document.addEventListener('click', function(e) {
 
 def archive_server(input, output, session,
                    session_archive, app_state, current_mode, data_source,
-                   api_data, upload_data, archive_update_status):
+                   api_data, upload_data, archive_update_status, log_fn=None):
 
     # Diff state owned entirely here
     _update_diffs:  reactive.Value = reactive.Value(None)
@@ -377,11 +386,18 @@ def archive_server(input, output, session,
         finally:
             _is_checking.set(False)
 
+        if log_fn:
+            log_fn(f"Archive check: {len(nct_ids)} trial(s) queried from ClinicalTrials.gov")
+
         if not diffs_by_nct:
             archive_update_status.set({})
+            if log_fn:
+                log_fn(f"Archive check: all {len(nct_ids)} trial(s) up to date", level="ok")
             ui.notification_show("All trials are up to date.", type="message", duration=4)
             return
 
+        if log_fn:
+            log_fn(f"Archive check: {len(diffs_by_nct)} trial(s) with changed fields", level="ok")
         _update_diffs.set(diffs_by_nct)
         _update_fresh.set(fresh_by_nct)
         _pending_edits.set({})
@@ -415,7 +431,20 @@ def archive_server(input, output, session,
                         width="280px",
                         id="chk_sidebar",
                     ),
-                    ui.output_ui("checking_table"),
+                    ui.div(
+                        ui.div(
+                            ui.tags.button(
+                                type="button",
+                                class_="btn-close py-1",
+                                **{"data-bs-dismiss": "alert", "aria-label": "Close"},
+                            ),
+                            ui.tags.i(class_="bi bi-info-circle me-2"),
+                            "Click an NCT number to review and edit derived fields (Compound, Indication, Acronym) for that trial.",
+                            class_="alert alert-primary alert-dismissible fade show small my-1 py-1 d-flex align-items-center",
+                            role="alert",
+                        ),
+                        ui.output_ui("checking_table"),
+                    ),
                 ),
             ),
             target="Trial Information",
@@ -520,7 +549,7 @@ def archive_server(input, output, session,
                     ),
                     ui.modal_button("Cancel"),
                 ),
-                size="l",
+                size="xl",
                 easy_close=True,
             )
         )
@@ -547,6 +576,8 @@ def archive_server(input, output, session,
                     except Exception:
                         pass
         _pending_edits.set(edits)
+        if log_fn:
+            log_fn(f"Pending edit saved for {nct}")
         ui.modal_remove()
 
     # ── Save to Session button ───────────────────────────────────────────────
@@ -619,6 +650,8 @@ def archive_server(input, output, session,
             "df":          df,
         })
         session_archive.set(records)
+        if log_fn:
+            log_fn(f"Saved to session: '{name}' — {n_updated} trial(s) updated", level="ok")
 
         _update_diffs.set(None)
         _update_fresh.set(None)
@@ -733,6 +766,9 @@ def archive_server(input, output, session,
                         _source_label.set(r.get("label", ""))
                         archive_update_status.set({})
                         app_state.set("loaded")
+                        if log_fn:
+                            label = r.get("label", "")
+                            log_fn(f"Loaded session record: '{label}' ({len(df)} rows)", level="ok")
             _make_handler(i)
 
     # ── Curated card load handlers ───────────────────────────────────────────
@@ -754,6 +790,9 @@ def archive_server(input, output, session,
                     _source_label.set(stub.get("compound", "curated"))
                     archive_update_status.set({})
                     app_state.set("loaded")
+                    if log_fn:
+                        compound = stub.get("compound", "curated")
+                        log_fn(f"Loaded curated dataset: {compound} ({len(df)} rows)", level="ok")
                 except Exception as e:
                     ui.notification_show(
                         f"Could not load dataset: {e}",

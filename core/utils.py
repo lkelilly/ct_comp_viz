@@ -14,7 +14,21 @@ import re
 from .indication_mapping import map_indication, _SYNONYM_RULES
 
 
-_PLACEBO_RE = re.compile(r'^\s*placebo\b', re.IGNORECASE)
+_PLACEBO_TYPE_RE = re.compile(r'^\s*PLACEBO\s*:', re.IGNORECASE)
+
+_COMPARATOR_NAME_RE = re.compile(
+    r'^\s*(?:placebo|usual\s+care|standard\s+(?:of\s+)?care|'
+    r'best\s+supportive\s+care|standard\s+treatment|'
+    r'no\s+(?:treatment|intervention)|watchful\s+waiting)\b',
+    re.IGNORECASE,
+)
+
+
+def _is_comparator(part: str) -> bool:
+    if _PLACEBO_TYPE_RE.match(part):
+        return True
+    name = part.split(':', 1)[1].strip() if ':' in part else part.strip()
+    return bool(_COMPARATOR_NAME_RE.match(name))
 
 _MASTER_PROTOCOL_KEYWORDS = ["master protocol", "platform trial", "platform study", "umbrella study"]
 
@@ -132,7 +146,7 @@ def _match_compound(interventions_str: str, query_intr: str = "") -> str:
         return ""
     # Normalize separators (CSV export uses "|", API-derived uses " | ")
     parts = [p.strip() for p in interventions_str.split('|') if p.strip()]
-    parts = [p for p in parts if not _PLACEBO_RE.match(p)]
+    parts = [p for p in parts if not _is_comparator(p)]
     if not parts:
         return "Only Placebo Found"
     if not query_intr or not query_intr.strip():

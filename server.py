@@ -653,4 +653,5 @@ def server(input, output, session):
         api_data=api_data,
         upload_data=upload_data,
         archive_update_status=archive_update_status,
+        log_fn=_log,
     )

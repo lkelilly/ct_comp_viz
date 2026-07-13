@@ -223,9 +223,15 @@ def viz_server(input, output, session, active_data):
         if dropped <= 0:
             return ui.div()
         return ui.div(
+            ui.tags.button(
+                type="button",
+                class_="btn-close mt-1 py-1",
+                **{"data-bs-dismiss": "alert", "aria-label": "Close"},
+            ),
             ui.tags.i(class_="bi bi-info-circle me-1"),
             f"{dropped:,} trial(s) in `Trial Information` not displayed due to missing or invalid start/end date",
-            class_="alert alert-warning small mx-3 mb-2 py-2",
+            class_="alert alert-warning alert-dismissible fade show small py-1 d-flex align-items-center",
+            role="alert",
         )
 
     @output(suspend_when_hidden=False)
