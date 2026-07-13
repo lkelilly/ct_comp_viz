@@ -36,7 +36,6 @@ async def fetch_studies(
     filter_phase=None,       filter_status=None,    filter_study_type=None,
     filter_funder=None,      filter_sex=None,       filter_healthy=False,
     filter_results=None,     filter_age_min=None,   filter_age_max=None,
-    filter_enroll_min=None,  filter_enroll_max=None,
     filter_start_from=None,  filter_start_to=None,
     filter_completion_from=None, filter_completion_to=None,
     sort_order="LastUpdatePostDate:desc",
@@ -56,7 +55,6 @@ async def fetch_studies(
         filter_phase, filter_status, filter_study_type, filter_funder,
         filter_sex, filter_healthy, filter_results,
         filter_age_min, filter_age_max,
-        filter_enroll_min, filter_enroll_max,
         filter_start_from, filter_start_to,
         filter_completion_from, filter_completion_to,
         sort_order, max_results,
@@ -173,7 +171,6 @@ def _build_params(
     filter_phase, filter_status, filter_study_type, filter_funder,
     filter_sex, filter_healthy, filter_results,
     filter_age_min, filter_age_max,
-    filter_enroll_min, filter_enroll_max,
     filter_start_from, filter_start_to,
     filter_completion_from, filter_completion_to,
     sort_order, max_results,
@@ -232,11 +229,6 @@ def _build_params(
         adv.append(f"AREA[MinimumAge]RANGE[{int(filter_age_min)} years, MAX]")
     if filter_age_max is not None:
         adv.append(f"AREA[MaximumAge]RANGE[MIN, {int(filter_age_max)} years]")
-
-    if filter_enroll_min is not None:
-        adv.append(f"AREA[EnrollmentCount]RANGE[{int(filter_enroll_min)}, MAX]")
-    if filter_enroll_max is not None:
-        adv.append(f"AREA[EnrollmentCount]RANGE[MIN, {int(filter_enroll_max)}]")
 
     if filter_start_from:
         adv.append(f"AREA[StartDate]RANGE[{filter_start_from}, MAX]")

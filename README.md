@@ -54,3 +54,6 @@ Changes from the initial version:
 >     - filter for papers after completion date (2 months grace period);
 >     - drop post-hoc or secondary analysis papers;
 >     - rank by citation count, if not papers in main journals, keep 2 at maximum. 
+>
+> `archive` branch:
+> - add archive feature, still in development.

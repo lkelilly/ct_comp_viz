@@ -1,0 +1,9 @@
+[
+  {
+    "compound":    "test",
+    "indication":  "indication placeholder, or anything else",
+    "save_date":   "2025-01",
+    "description": "Data set TZP_OFG_GGG_Sema_Cagrisema_29Jan2025",
+    "path":        "data/test_data.csv"
+  }
+]
