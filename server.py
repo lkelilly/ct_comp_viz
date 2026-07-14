@@ -5,7 +5,7 @@ Shared state, core fetch logic, renderUI functions, and module wiring.
 
 Owns:
   - All shared reactive values
-  - _log helper and _summarise_kwargs
+  - _log helper and _summarize_kwargs
   - _run_fetch (async, used by landing._on_run)
   - Navbar, context bar, slide panel, and main content renderUI
   - Mode selector and context bar button handlers
@@ -105,7 +105,7 @@ def server(input, output, session):
         entries.append((ts, level, msg))
         log_entries.set(entries)
 
-    def _summarise_kwargs(kwargs):
+    def _summarize_kwargs(kwargs):
         parts = []
         label_map = {
             "query_cond": "condition", "query_intr": "intervention",
@@ -132,7 +132,7 @@ def server(input, output, session):
         is_loading.set(True)
         load_progress.set((0, 0))
 
-        _log(f"Query: {_summarise_kwargs(kwargs)}")
+        _log(f"Query: {_summarize_kwargs(kwargs)}")
         _log(f"Fetching from ClinicalTrials.gov  (max {kwargs.get('max_results', 500)} results)…")
 
         t0 = time.time()
@@ -162,7 +162,11 @@ def server(input, output, session):
                 p.set(1, message="Processing data", detail="Mapping indications...")
                 await asyncio.sleep(0)
                 p.set(2, message="Processing data", detail="Adding compound information...")
-                df = await asyncio.to_thread(process_raw_ctgov, df, query_intr=kwargs.get("query_intr") or "")
+                df = await asyncio.to_thread(
+                    process_raw_ctgov, df,
+                    query_intr=kwargs.get("query_intr") or "",
+                    query_other_id=kwargs.get("query_other_id") or "",
+                )
                 p.set(3, message="Processing data", detail="Fetching publications from PubMed...")
                 await asyncio.sleep(0)
                 df = await asyncio.to_thread(add_publications, df)
@@ -500,12 +504,27 @@ def server(input, output, session):
         if state == "empty":
             return ui.div(
                 ui.div(
-                    ui.h3("Get started", class_="fw-bold mb-2"),
-                    ui.p(
-                        "Fetch new trial data from ClinicalTrials.gov, upload your own dataset,"
-                        " or browse the curated archive.",
-                        class_="text-muted mb-4",
+                    ui.h3("Get Started", class_="fw-bold mb-3"),
+                    ui.p("Welcome! This dashboard supports three workflows:", class_="text-muted text-start mb-1"),
+                    ui.tags.ol(
+                        ui.tags.li(
+                            ui.tags.strong("Fetch"), " — query ClinicalTrials.gov directly and process results for " \
+                            "timeline visualization, publication links, and standardized trial information. You can also" \
+                            "get the compound's CLUWE path if it's a Lilly compound;",
+                            class_="mb-1",
+                        ),
+                        ui.tags.li(
+                            ui.tags.strong("Upload"), " — bring your own CT.gov-alike data and run the same processing;",
+                            class_="mb-1",
+                        ),
+                        ui.tags.li(
+                            ui.tags.strong("Archive"), " — (Initial demo, developing) browse curated datasets and compare " \
+                            "them against the latest data from CT.gov. Edit and save your own version per session.",
+                            class_="mb-1",
+                        ),
+                        class_="text-muted text-start mb-1 ps-3",
                     ),
+                    ui.p("Thanks for testing with the current version!", class_="text-muted mb-4"),
                     ui.div(
                         ui.input_action_button(
                             "btn_cta_fetch", "Fetch / Upload",
@@ -517,7 +536,7 @@ def server(input, output, session):
                         ),
                     ),
                     class_="card p-5 text-center",
-                    style="max-width:520px; border-radius:12px; box-shadow:0 4px 32px rgba(0,0,0,.08);",
+                    style="max-width:560px; border-radius:12px; box-shadow:0 4px 32px rgba(0,0,0,.08);",
                 ),
                 class_="min-vh-100 d-flex align-items-center justify-content-center p-4",
                 style="background:#f5f5f7;",
@@ -570,7 +589,7 @@ def server(input, output, session):
             right_btns.append(
                 ui.tags.button(
                     "Upload New Data",
-                    class_="btn btn-sm btn-dark me-2 mt-1",
+                    class_="btn btn-sm btn-secondary me-2 mt-1",
                     onclick="document.getElementById('upload_file_new').click();",
                     type="button",
                 )

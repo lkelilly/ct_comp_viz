@@ -23,12 +23,36 @@ _COMPARATOR_NAME_RE = re.compile(
     re.IGNORECASE,
 )
 
+_LY_NUMBER_RE = re.compile(r'\bLY\d{6,7}\b', re.IGNORECASE)
+
 
 def _is_comparator(part: str) -> bool:
     if _PLACEBO_TYPE_RE.match(part):
         return True
     name = part.split(':', 1)[1].strip() if ':' in part else part.strip()
     return bool(_COMPARATOR_NAME_RE.match(name))
+
+
+def _derive_cluwe_path(row: dict, query_other_id: str = "") -> str:
+    if str(row.get("sponsor", "")) != "Eli Lilly and Company":
+        return ""
+    # Get LY number: user-supplied takes priority, then scan title/interventions
+    m = _LY_NUMBER_RE.search(query_other_id)
+    if m:
+        ly = m.group(0).lower()
+    else:
+        ly = ""
+        for field in ("study_title", "interventions"):
+            m = _LY_NUMBER_RE.search(str(row.get(field, "") or ""))
+            if m:
+                ly = m.group(0).lower()
+                break
+    # Get protocol ID from lilly_id column (already derived in Step 2)
+    protocol_id = str(row.get("lilly_id", "") or "").strip()
+    if not ly or not protocol_id:
+        return ""
+    protocol_slug = protocol_id.lower().replace("-", "_")
+    return f"/lillyce/qa/{ly}/{protocol_slug}"
 
 _MASTER_PROTOCOL_KEYWORDS = ["master protocol", "platform trial", "platform study", "umbrella study"]
 
@@ -38,6 +62,100 @@ _MONTH_ONLY = re.compile(r'^\d{4}-\d{2}$')
 def _valid_date(v):
     v = (v or "").strip()
     return v if re.match(r"^\d{4}-\d{2}-\d{2}$", v) else None
+
+
+# ── Shared truncated-text hover tooltip (Trial Information + Checking tables) ──
+
+TRUNC_TOOLTIP_CSS = """
+.trunc {
+    cursor: help;
+    border-bottom: 1px dotted #999;
+}
+.trunc-tooltip {
+    position: fixed;
+    display: none;
+    max-width: 420px;
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 8px 10px;
+    background: #212529;
+    color: #fff;
+    font-size: .8rem;
+    line-height: 1.35;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.25);
+    white-space: normal;
+    word-wrap: break-word;
+    z-index: 3000;
+    pointer-events: auto;
+}
+"""
+
+TRUNC_TOOLTIP_JS = """
+(function() {
+    function init() {
+        var tip = document.createElement('div');
+        tip.className = 'trunc-tooltip';
+        document.body.appendChild(tip);
+
+        var hideTimer = null;
+
+        function cancelHide() {
+            if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        }
+
+        function scheduleHide() {
+            cancelHide();
+            hideTimer = setTimeout(function() {
+                tip.style.display = 'none';
+            }, 150);
+        }
+
+        function position(e) {
+            var pad = 14;
+            var rect = tip.getBoundingClientRect();
+            var x = e.clientX + pad;
+            var y = e.clientY + pad;
+            if (x + rect.width > window.innerWidth)   x = Math.max(pad, window.innerWidth - rect.width - pad);
+            if (y + rect.height > window.innerHeight) y = Math.max(pad, window.innerHeight - rect.height - pad);
+            tip.style.left = x + 'px';
+            tip.style.top  = y + 'px';
+        }
+
+        document.addEventListener('mouseover', function(e) {
+            if (e.target.closest('.trunc-tooltip')) {
+                cancelHide();
+                return;
+            }
+            var el = e.target.closest('.trunc');
+            if (!el) return;
+            cancelHide();
+            tip.textContent = el.getAttribute('data-full') || '';
+            tip.style.display = 'block';
+            position(e);
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (tip.style.display === 'block' && e.target.closest('.trunc')) {
+                position(e);
+            }
+        });
+
+        document.addEventListener('mouseout', function(e) {
+            var el = e.target.closest('.trunc');
+            var onTip = e.target.closest('.trunc-tooltip');
+            if (!el && !onTip) return;
+            scheduleHide();
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+"""
 
 
 def build_filter_kwargs(input) -> dict:
@@ -383,7 +501,7 @@ def read_uploaded_csv(path: str) -> pd.DataFrame:
     return df
 
 
-def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "") -> pd.DataFrame:
+def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "", query_other_id: str = "") -> pd.DataFrame:
     """
     Process a raw CT.gov DataFrame (from API or uploaded CSV) into the
     canonical form used by all tabs.
@@ -440,6 +558,11 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "") -> pd.DataFrame:
         df["lilly_id"] = df.apply(_get_lilly_id, axis=1)
     elif "lilly_id" not in df.columns:
         df["lilly_id"] = None
+
+    # ── Step 2b: Derive CLUWE path ────────────────────────────────────────────
+    df["cluwe_path"] = df.apply(
+        lambda row: _derive_cluwe_path(row, query_other_id), axis=1
+    )
 
     # ── Step 3: Acronym fallback ──────────────────────────────────────────────
     if "nct_number" in df.columns:
