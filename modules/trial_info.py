@@ -7,37 +7,25 @@ Trial Information tab — UI and server logic.
 from itables import to_html_datatable, JavascriptFunction
 from shiny import render, ui
 
-from core.utils import filter_by_selections, input_exists
+from core.utils import filter_by_selections, input_exists, make_filter_ui, SORT_CHOICES, filter_header, COL_LABELS
 
 
-TRIAL_TABLE_LABELS = {
-    "nct_number":                 "NCT Number",
-    "acronym":                    "Acronym",
-    "study_title":                "Study Title",
-    "indication":                 "Indication",
-    "compound":                   "Compound",
-    "relevant_publication":       "Relevant Publication",
-    "publication_source":         "Publication Source",
-    "interventions":              "Interventions",
-    "conditions":                 "Conditions",
-    "enrollment":                 "Enrollment",
-    "start_date":                 "Start Date",
-    "primary_completion_date":    "Primary Completion",
-    "completion_date":            "Completion Date",
-    "phases":                     "Phase",
-    "study_status":               "Status",
-    "study_type":                 "Study Type",
-    "study_results":              "Results",
-    "brief_summary":              "Brief Summary",
-    "primary_outcome_measures":          "Primary Outcome Measures",
-    "secondary_outcome_measures":        "Secondary Outcome Measures",
-    "simplified_primary_outcome":        "Simplified Primary Outcome",
-    "simplified_secondary_outcome":      "Simplified Secondary Outcome",
-    "inclusion_criteria":                "Inclusion Criteria",
-    "exclusion_criteria":                "Exclusion Criteria",
-    "sponsor":                    "Sponsor",
-    "cluwe_path":                 "CLUWE Path",
-}
+def _insert_after(d, after_key, extra):
+    """Return a copy of dict `d` with `extra`'s items inserted right after
+    `after_key`. Preserves key order, which trial_table below relies on to
+    determine displayed column order."""
+    out = {}
+    for k, v in d.items():
+        out[k] = v
+        if k == after_key:
+            out.update(extra)
+    return out
+
+
+TRIAL_TABLE_LABELS = _insert_after(COL_LABELS, "brief_summary", {
+    "primary_outcome_measures":   "Primary Outcome Measures",
+    "secondary_outcome_measures": "Secondary Outcome Measures",
+})
 
 TRUNCATE_COLS = [
     "brief_summary",
@@ -53,29 +41,10 @@ TRUNCATE_COLS = [
 
 TRUNCATE_LENGTH = 200
 
-_CTRL_CLICK_JS = """
-document.addEventListener('click', function(e) {
-    if (!e.ctrlKey) return;
-    var cb = e.target;
-    if (cb.tagName !== 'INPUT' || cb.type !== 'checkbox') return;
-    var group = cb.closest('.shiny-input-checkboxgroup');
-    if (!group) return;
-    e.preventDefault();
-    var all = group.querySelectorAll('input[type=checkbox]');
-    all.forEach(function(c) { c.checked = false; });
-    cb.checked = true;
-    Shiny.setInputValue(group.id, [cb.value]);
-}, true);
-"""
-
 
 def trial_info_ui():
     sidebar = ui.sidebar(
-        ui.div(
-            ui.h6("TRIAL FILTERS", class_="fs-6 fw-bold"),
-            ui.tags.small("Ctrl+Click to select only one item.",
-                          class_="d-block m-0 text-muted"),
-        ),
+        filter_header(),
         ui.output_ui("ti_compound_ui"),
         ui.output_ui("ti_indication_ui"),
         ui.output_ui("ti_phase_ui"),
@@ -84,16 +53,10 @@ def trial_info_ui():
         ui.h6("SORT", class_="fs-6 fw-bold"),
         ui.input_select(
             "ti_sort_by", "Sort rows by:",
-            choices={
-                "start_date":              "Start Date",
-                "primary_completion_date": "Primary Completion Date",
-                "completion_date":         "Completion Date",
-                "phases":                  "Phase",
-            },
+            choices=SORT_CHOICES,
             selected="start_date",
         ),
 
-        ui.tags.script(ui.HTML(_CTRL_CLICK_JS)),
         width="280px",
         id="ti_sidebar",
     )
@@ -114,29 +77,17 @@ def trial_info_server(input, output, session, active_data):
     @output(suspend_when_hidden=False)
     @render.ui
     def ti_compound_ui():
-        df = active_data()
-        if df is None or df.empty:
-            return ui.div()
-        choices = sorted(df["compound"].dropna().unique().tolist())
-        return ui.input_checkbox_group("ti_compound", "Compound:", choices=choices, selected=choices)
+        return make_filter_ui(active_data, "compound", "ti_compound", "Compound:")
 
     @output(suspend_when_hidden=False)
     @render.ui
     def ti_indication_ui():
-        df = active_data()
-        if df is None or df.empty:
-            return ui.div()
-        choices = sorted(df["indication"].dropna().unique().tolist())
-        return ui.input_checkbox_group("ti_indication", "Indication:", choices=choices, selected=choices)
+        return make_filter_ui(active_data, "indication", "ti_indication", "Indication:")
 
     @output(suspend_when_hidden=False)
     @render.ui
     def ti_phase_ui():
-        df = active_data()
-        if df is None or df.empty:
-            return ui.div()
-        choices = sorted(df["phases"].dropna().unique().tolist())
-        return ui.input_checkbox_group("ti_phase", "Phase:", choices=choices, selected=choices)
+        return make_filter_ui(active_data, "phases", "ti_phase", "Phase:")
 
     @output(suspend_when_hidden=False)
     @render.ui

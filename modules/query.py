@@ -18,25 +18,6 @@ from shiny import reactive, render, ui
 from core.utils import build_filter_kwargs
 
 
-# ── Shared CSS ────────────────────────────────────────────────────────────────
-
-def _query_css():
-    return ui.tags.style("""
-      .shiny-input-container:has(#query_intr_land),
-      .shiny-input-container:has(#query_locn_land),
-      .shiny-input-container:has(#include_other_id_land) {
-        margin-bottom: 0 !important;
-      }
-      .shiny-input-container:has(#filter_status) {
-        margin-top: 0 !important;
-        margin-bottom: 0 !important;
-      }
-      .shiny-input-container:has(#upload_file) {
-        margin-bottom: 0 !important;
-      }
-    """)
-
-
 # ── Query field columns ───────────────────────────────────────────────────────
 
 def _left_col_fields():
@@ -236,7 +217,6 @@ def query_page_ui():
     Used in source-selection view.
     """
     return ui.div(
-        _query_css(),
         # Title
         ui.h2("Dashboard Testing", class_="fw-bold mb-1"),
         ui.p(
@@ -279,7 +259,6 @@ def edit_query_ui():
     Used in the edit-query slide panel.
     """
     return ui.div(
-        _query_css(),
         _query_section_header(title="Edit Last Query"),
         ui.div(
             ui.div(_left_col_fields(),  class_="col-6"),
@@ -293,7 +272,7 @@ def edit_query_ui():
 # ── Server logic ──────────────────────────────────────────────────────────────
 
 def query_server(input, output, session,
-                 current_mode, app_state, is_loading, load_progress,
+                 app_state,
                  api_data, upload_data, query_params, upload_info, data_source,
                  edit_panel_open, api_error, log_fn,
                  run_fetch_fn, read_uploaded_csv_fn, process_fn, fetch_pubs_fn):
@@ -336,8 +315,6 @@ def query_server(input, output, session,
         return _upload_msg.get()
 
     async def _do_upload(name, path):
-        is_loading.set(True)
-        load_progress.set((0, 0))
         try:
             df = read_uploaded_csv_fn(path)
             df = process_fn(
@@ -362,9 +339,6 @@ def query_server(input, output, session,
         except Exception as e:
             log_fn(f"Error reading {name}: {e}", level="error")
             _upload_msg.set(f"Error:  Could not read {name}")
-        finally:
-            is_loading.set(False)
-            load_progress.set((0, 0))
 
     @reactive.effect
     @reactive.event(input.upload_file)

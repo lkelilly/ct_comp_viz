@@ -4,17 +4,16 @@ pubmed_api.py
 Enriches the trial DataFrame with PubMed publication links.
 
 Workflow:
-  1. Collect seed PMIDs from the ctgov_pmids column (raw IDs from CT.gov references module).
-  2. ESearch PubMed for NCTs that had no CT.gov seed PMIDs → additional PMIDs.
-  3. Combine seed + ESearch PMIDs → EFetch XML metadata.
-  4. Parse each article for NCT accession number and regex-scan title/abstract as a fallback.
-  5. Invert the PMID → NCTs mapping to NCT → {pmids, source}.
-  6. Fill 'publications' for every row via NCT lookup.
-  7. Assign source "pubmed registry" (DataBankList) or "pubmed abstract" (regex).
-  8. Fetch citation counts from the NIH iCite API and attach to each article.
-  9. Apply filtering rules: keep all priority-journal articles unconditionally,
+  1. ESearch PubMed for every NCT number → candidate PMIDs.
+  2. EFetch XML metadata for those PMIDs.
+  3. Parse each article for NCT accession number and regex-scan title/abstract as a fallback.
+  4. Invert the PMID → NCTs mapping to NCT → {pmids, source}.
+  5. Fill 'publications' for every row via NCT lookup.
+  6. Assign source "pubmed registry" (DataBankList) or "pubmed abstract" (regex).
+  7. Fetch citation counts from the NIH iCite API and attach to each article.
+  8. Apply filtering rules: keep all priority-journal articles unconditionally,
      then select <=2 non-priority publications per trial.
-  10. Write results to 'relevant_publication' and 'publication_source'.
+  9. Write results to 'relevant_publication' and 'publication_source'.
 """
 
 import re
@@ -385,11 +384,10 @@ def add_publications(df: pd.DataFrame) -> pd.DataFrame:
     """
     Enrich the trial DataFrame with publication data and provenance.
 
-    Seed PMIDs from the ctgov_pmids column (CT.gov references module) are
-    combined with ESearch results for NCTs that had no seed PMIDs, then all
-    are run through the same EFetch + NCT-matching pipeline. iCite citation
-    counts are fetched and attached. Source is "pubmed registry" (DataBankList
-    hit) or "pubmed abstract" (regex scan).
+    Every NCT number is searched via PubMed ESearch, and the resulting PMIDs
+    are run through the EFetch + NCT-matching pipeline. iCite citation counts
+    are fetched and attached. Source is "pubmed registry" (DataBankList hit)
+    or "pubmed abstract" (regex scan).
 
     Writes 'relevant_publication' and 'publication_source'.
     Safe to call on both CT.gov-fetched and user-uploaded DataFrames.
@@ -410,47 +408,30 @@ def add_publications(df: pd.DataFrame) -> pd.DataFrame:
     nct_map: dict = {}
 
     try:
-        # Step 1: seed PMIDs from CT.gov references
-        seed_pmids: list = []
-        if "ctgov_pmids" in df.columns:
-            for val in df["ctgov_pmids"].dropna():
-                if isinstance(val, str) and val != "NA":
-                    seed_pmids.extend(p.strip() for p in val.split(" | ") if p.strip())
-        seed_pmids = list(dict.fromkeys(seed_pmids))
-
-        # Step 2: ESearch for NCTs that have no CT.gov seed PMIDs
-        esearch_pmids: list = []
+        # Step 1: ESearch for every NCT number
+        all_pmids: list = []
         if nct_col is not None:
-            if "ctgov_pmids" in df.columns:
-                no_ctgov_mask = df["ctgov_pmids"].apply(
-                    lambda v: not isinstance(v, str) or v == "NA"
-                )
-            else:
-                no_ctgov_mask = pd.Series([True] * len(df), index=df.index)
-            no_pub_ncts = (
-                df.loc[no_ctgov_mask, nct_col]
-                .dropna().unique().tolist()
-            )
-            no_pub_ncts = [n for n in no_pub_ncts if isinstance(n, str) and n.startswith("NCT")]
-            if no_pub_ncts:
-                esearch_pmids = _esearch(_build_search_query(no_pub_ncts))
+            all_ncts = df[nct_col].dropna().unique().tolist()
+            all_ncts = [n for n in all_ncts if isinstance(n, str) and n.startswith("NCT")]
+            if all_ncts:
+                all_pmids = _esearch(_build_search_query(all_ncts))
+        all_pmids = list(dict.fromkeys(all_pmids))
 
-        # Step 3: Combine + EFetch
-        all_pmids = list(dict.fromkeys(seed_pmids + esearch_pmids))
+        # Step 2: EFetch
         if all_pmids:
             xml_root = _efetch_xml(all_pmids)
             pmid_map = _parse_pmid_to_ncts(xml_root)
             nct_map  = _invert_mapping(pmid_map)
             nct_source_map = {nct: info["source"] for nct, info in nct_map.items()}
 
-            # Step 3b: Fetch citation counts from iCite and attach to articles
+            # Step 2b: Fetch citation counts from iCite and attach to articles
             unique_pmids = list(pmid_map.keys())
             cite_counts = _fetch_citation_counts(unique_pmids)
             for nct, info in nct_map.items():
                 for article in info["articles"]:
                     article["citation_count"] = cite_counts.get(article["pmid"], 0)
 
-        # Step 4: Fill publications via NCT lookup
+        # Step 3: Fill publications via NCT lookup
         if nct_col and nct_map:
             def _fill(row):
                 nct = row.get(nct_col, "")
@@ -466,7 +447,7 @@ def add_publications(df: pd.DataFrame) -> pd.DataFrame:
     except Exception:
         pass  # Leave publications unchanged on any network/parse error
 
-    # Step 5: Write relevant_publication and publication_source
+    # Step 4: Write relevant_publication and publication_source
     def _build_row(row):
         nct  = row.get(nct_col, "") if nct_col else ""
         pubs = row["publications"]

@@ -16,12 +16,28 @@ from shiny import ui
 
 from core.utils import TRUNC_TOOLTIP_CSS, TRUNC_TOOLTIP_JS
 
+_CTRL_CLICK_JS = """
+document.addEventListener('click', function(e) {
+    if (!e.ctrlKey) return;
+    var cb = e.target;
+    if (cb.tagName !== 'INPUT' || cb.type !== 'checkbox') return;
+    var group = cb.closest('.shiny-input-checkboxgroup');
+    if (!group) return;
+    e.preventDefault();
+    var all = group.querySelectorAll('input[type=checkbox]');
+    all.forEach(function(c) { c.checked = false; });
+    cb.checked = true;
+    Shiny.setInputValue(group.id, [cb.value]);
+}, true);
+"""
+
 app_ui = ui.page_bootstrap(
     ui.head_content(
         ui.tags.script(src="https://cdn.plot.ly/plotly-3.0.1.min.js"),
         ui.busy_indicators.use(pulse=True),
         ui.tags.style(TRUNC_TOOLTIP_CSS),
         ui.tags.script(ui.HTML(TRUNC_TOOLTIP_JS)),
+        ui.tags.script(ui.HTML(_CTRL_CLICK_JS)),
         ui.tags.style("""
             body { font-family: system-ui, Avenir, Helvetica, Arial, sans-serif; margin: 0; }
             .bslib-sidebar-layout { height: calc(100vh - 56px); }
@@ -75,6 +91,20 @@ app_ui = ui.page_bootstrap(
                 color: #055160;
             }
 
+        """),
+        ui.tags.style("""
+          .shiny-input-container:has(#query_intr_land),
+          .shiny-input-container:has(#query_locn_land),
+          .shiny-input-container:has(#include_other_id_land) {
+            margin-bottom: 0 !important;
+          }
+          .shiny-input-container:has(#filter_status) {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+          }
+          .shiny-input-container:has(#upload_file) {
+            margin-bottom: 0 !important;
+          }
         """),
     ),
     ui.output_ui("app_navbar"),

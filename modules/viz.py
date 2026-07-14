@@ -11,7 +11,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from shiny import reactive, render, ui
 
-from core.utils import filter_by_selections
+from core.utils import filter_by_selections, make_filter_ui, SORT_CHOICES, filter_header, dismissible_alert, COL_LABELS
 
 MAX_VIZ_TRIALS = 300
 
@@ -35,12 +35,13 @@ def _enrollment_label(n):
     for lo, hi, label, _ in _ENROLLMENT_BUCKETS:
         if (lo is None or n >= lo) and (hi is None or n < hi):
             return label
+    return "< 100"
 
 def _enrollment_linewidth(label, multiplier=1.0):
     for _, _, lbl, width in _ENROLLMENT_BUCKETS:
         if lbl == label:
             return width * multiplier
-    return 8 * multiplier
+    return _ENROLLMENT_BUCKETS[0][3] * multiplier
 
 
 # ── Color palette for indications ────────────────────────────────────────────
@@ -50,9 +51,6 @@ _INDICATION_COLORS = [
     "#937860", "#DA8BC3", "#8C8C8C", "#CCB974", "#64B5CD",
     "#2D6A4F", "#B5E48C", "#F4A261", "#E76F51", "#264653",
 ]
-
-
-_COL_LABELS = {"indication": "Indication", "compound": "Compound", "phases": "Phase"}
 
 
 # ── UI ────────────────────────────────────────────────────────────────────────
@@ -72,21 +70,12 @@ def viz_ui():
         ),
         ui.input_select(
             "viz_sort_by", "Sort rows by:",
-            choices={
-                "start_date":              "Start Date",
-                "primary_completion_date": "Primary Completion Date",
-                "completion_date":         "Completion Date",
-                "phases":                  "Phase",
-            },
+            choices=SORT_CHOICES,
             selected="start_date",
         ),
 
         ui.hr(class_="my-1"),
-        ui.div(
-            ui.h6("TRIAL FILTERS", class_="fs-6 fw-bold"),
-            ui.tags.small("Ctrl+Click to select only one item.",
-                          class_="d-block m-0 text-muted"),
-        ),
+        filter_header(),
         ui.output_ui("viz_compound_ui"),
         ui.output_ui("viz_indication_ui"),
         ui.output_ui("viz_phase_ui"),
@@ -138,41 +127,17 @@ def viz_server(input, output, session, active_data):
     @output(suspend_when_hidden=False)
     @render.ui
     def viz_compound_ui():
-        df = active_data()
-        if df is None or df.empty:
-            return ui.p("No data loaded.", class_="fs-6 text-muted")
-        choices = sorted(df["compound"].dropna().unique().tolist())
-        return ui.input_checkbox_group(
-            "viz_compound", "Compound:",
-            choices=choices,
-            selected=choices,
-        )
+        return make_filter_ui(active_data, "compound", "viz_compound", "Compound:")
 
     @output(suspend_when_hidden=False)
     @render.ui
     def viz_indication_ui():
-        df = active_data()
-        if df is None or df.empty:
-            return ui.div()
-        choices = sorted(df["indication"].dropna().unique().tolist())
-        return ui.input_checkbox_group(
-            "viz_indication", "Indication:",
-            choices=choices,
-            selected=choices,
-        )
+        return make_filter_ui(active_data, "indication", "viz_indication", "Indication:")
 
     @output(suspend_when_hidden=False)
     @render.ui
     def viz_phase_ui():
-        df = active_data()
-        if df is None or df.empty:
-            return ui.div()
-        choices = sorted(df["phases"].dropna().unique().tolist())
-        return ui.input_checkbox_group(
-            "viz_phase", "Phase:",
-            choices=choices,
-            selected=choices,
-        )
+        return make_filter_ui(active_data, "phases", "viz_phase", "Phase:")
 
     # ── Filtered + sorted data ────────────────────────────────────────────────
 
@@ -200,7 +165,7 @@ def viz_server(input, output, session, active_data):
         group_by = input.viz_group_by()
         sort_cols = [group_by]
         if sort_by != group_by and sort_by in (
-            "start_date", "completion_date", "primary_completion_date", "indication", "phases"
+            "start_date", "completion_date", "primary_completion_date", "phases"
         ):
             sort_cols.append(sort_by)
         sort_cols.append("start_date")
@@ -222,16 +187,9 @@ def viz_server(input, output, session, active_data):
         dropped = viz_dropped_count()
         if dropped <= 0:
             return ui.div()
-        return ui.div(
-            ui.tags.button(
-                type="button",
-                class_="btn-close mt-1 py-1",
-                **{"data-bs-dismiss": "alert", "aria-label": "Close"},
-            ),
-            ui.tags.i(class_="bi bi-info-circle me-1"),
+        return dismissible_alert(
             f"{dropped:,} trial(s) in `Trial Information` not displayed due to missing or invalid start/end date",
-            class_="alert alert-warning alert-dismissible fade show small py-1 d-flex align-items-center",
-            role="alert",
+            level="warning",
         )
 
     @output(suspend_when_hidden=False)
@@ -345,7 +303,7 @@ def viz_server(input, output, session, active_data):
                 )
                 fig.add_hline(y=group_end - 0.5, line=dict(color="#cccccc", width=1))
 
-            group_label = _COL_LABELS.get(group_col, group_col.capitalize())
+            group_label = COL_LABELS.get(group_col, group_col.capitalize())
             fig.add_annotation(
                 x=0, y=-0.7,
                 xref="paper", yref="y",
@@ -371,7 +329,7 @@ def viz_server(input, output, session, active_data):
                     legendrank=1,
                 ))
 
-            color_section_title = _COL_LABELS.get(color_by, color_by.capitalize() if color_by else "")
+            color_section_title = COL_LABELS.get(color_by, color_by.capitalize() if color_by else "")
             fig.add_trace(go.Scatter(
                 x=[None], y=[None], mode="markers",
                 marker=dict(size=0, opacity=0),

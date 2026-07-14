@@ -20,7 +20,11 @@ import pandas as pd
 from itables import to_html_datatable, JavascriptFunction
 from shiny import reactive, render, ui
 
-from core.utils import read_uploaded_csv, filter_by_selections, input_exists
+from core.utils import (
+    read_uploaded_csv, filter_by_selections, input_exists,
+    make_filter_ui, SORT_CHOICES, filter_header, dismissible_alert, COL_LABELS,
+    _pad_month_only,
+)
 from core.ct_api import fetch_studies
 from core.utils import _extract_study
 
@@ -48,23 +52,9 @@ _DERIVED_FIELDS = {
 }
 
 _COL_LABELS = {
-    "nct_number":                 "NCT Number",
-    "study_title":                "Study Title",
-    "study_status":               "Status",
-    "enrollment":                 "Enrollment",
-    "primary_completion_date":    "Primary Completion",
-    "completion_date":            "Completion Date",
-    "start_date":                 "Start Date",
-    "study_results":              "Results",
+    **COL_LABELS,
     "primary_outcome_measures":   "Primary Outcomes",
     "secondary_outcome_measures": "Secondary Outcomes",
-    "inclusion_criteria":         "Inclusion Criteria",
-    "exclusion_criteria":         "Exclusion Criteria",
-    "interventions":              "Interventions",
-    "conditions":                 "Conditions",
-    "compound":                   "Compound",
-    "indication":                 "Indication",
-    "acronym":                    "Acronym",
 }
 
 _TRUNCATE_COLS = {
@@ -165,7 +155,7 @@ def _build_diff_datatable(df, diffs_by_nct, pending):
         has_pending = bool(pending.get(nct))
         out = {"_sort": "0" if is_changed else "1"}
 
-        # Build NCT cell explicitly so we can apply the green highlight after save
+        # Build NCT cell explicitly for hightlighted color
         nct_safe = _e(nct)
         nct_link = (
             f'<a href="#" class="nct-link" style="font-weight:500" data-nct="{nct_safe}">{nct_safe}</a>'
@@ -242,7 +232,6 @@ def _build_diff_datatable(df, diffs_by_nct, pending):
 # ── Archive date normalization ─────────────────────────────────────────────────
 
 _DATE_COLS = ("start_date", "primary_completion_date", "completion_date", "last_update_date")
-_MONTH_ONLY_ARCHIVE = re.compile(r'^\d{4}-\d{2}$')
 
 
 def _normalize_archive_dates(df: pd.DataFrame) -> pd.DataFrame:
@@ -265,8 +254,7 @@ def _normalize_archive_dates(df: pd.DataFrame) -> pd.DataFrame:
             v = v.strip()
             if not v or v in ("NaT", "nan"):
                 return v
-            if _MONTH_ONLY_ARCHIVE.match(v):
-                v = v + "-01"
+            v = _pad_month_only(v)
             try:
                 return pd.to_datetime(v, dayfirst=False).strftime("%Y-%m-%d")
             except Exception:
@@ -339,58 +327,46 @@ document.addEventListener('click', function(e) {
 # ── Server ────────────────────────────────────────────────────────────────────
 
 def archive_server(input, output, session,
-                   session_archive, app_state, current_mode, data_source,
-                   api_data, upload_data, archive_update_status, log_fn=None):
+                   session_archive, app_state, data_source,
+                   api_data, upload_data, archive_update_status, active_data,
+                   log_fn=None):
 
     # Diff state owned entirely here
     _update_diffs:  reactive.Value = reactive.Value(None)
     _update_fresh:  reactive.Value = reactive.Value(None)
     _pending_edits: reactive.Value = reactive.Value({})
     _source_label   = reactive.Value("")
-    _is_checking    = reactive.Value(False)
-
-    @reactive.calc
-    def _active_data():
-        if api_data.get() is not None:
-            return api_data.get()
-        if upload_data.get() is not None:
-            return upload_data.get()
-        return None
 
     # ── Check Updates handler ────────────────────────────────────────────────
 
     @reactive.effect
     @reactive.event(input.btn_check_updates)
     async def _on_check_updates():
-        df = _active_data()
+        df = active_data()
         if df is None:
             return
-        _is_checking.set(True)
         archive_update_status.set({"checking": True})
         nct_ids = df["nct_number"].dropna().tolist()
         diffs_by_nct = {}
-        try:
-            with ui.Progress(min=0, max=2) as p:
-                p.set(0, message="Fetching latest data from ClinicalTrials.gov…")
-                studies, _ = await fetch_studies(
-                    query_id=" OR ".join(nct_ids), max_results=len(nct_ids)
-                )
-                fresh_by_nct = {
-                    row["nct_number"]: row
-                    for row in [_extract_study(s) for s in studies]
-                }
-                p.set(1, message="Comparing fields…")
-                for _, archived in df.iterrows():
-                    nct = archived["nct_number"]
-                    fresh = fresh_by_nct.get(nct)
-                    if fresh is None:
-                        continue
-                    field_diffs = compare_trial_fields(dict(archived), fresh)
-                    if field_diffs:
-                        diffs_by_nct[nct] = field_diffs
-                p.set(2)
-        finally:
-            _is_checking.set(False)
+        with ui.Progress(min=0, max=2) as p:
+            p.set(0, message="Fetching latest data from ClinicalTrials.gov…")
+            studies, _ = await fetch_studies(
+                query_id=" OR ".join(nct_ids), max_results=len(nct_ids)
+            )
+            fresh_by_nct = {
+                row["nct_number"]: row
+                for row in [_extract_study(s) for s in studies]
+            }
+            p.set(1, message="Comparing fields…")
+            for _, archived in df.iterrows():
+                nct = archived["nct_number"]
+                fresh = fresh_by_nct.get(nct)
+                if fresh is None:
+                    continue
+                field_diffs = compare_trial_fields(dict(archived), fresh)
+                if field_diffs:
+                    diffs_by_nct[nct] = field_diffs
+            p.set(2)
 
         if log_fn:
             log_fn(f"Archive check: {len(nct_ids)} trial(s) queried from ClinicalTrials.gov")
@@ -414,11 +390,7 @@ def archive_server(input, output, session,
                 "Checking",
                 ui.layout_sidebar(
                     ui.sidebar(
-                        ui.div(
-                            ui.h6("TRIAL FILTERS", class_="fs-6 fw-bold"),
-                            ui.tags.small("Ctrl+Click to select only one item.",
-                                          class_="d-block m-0 text-muted"),
-                        ),
+                        filter_header(),
                         ui.output_ui("chk_compound_ui"),
                         ui.output_ui("chk_indication_ui"),
                         ui.output_ui("chk_phase_ui"),
@@ -426,28 +398,16 @@ def archive_server(input, output, session,
                         ui.h6("SORT", class_="fs-6 fw-bold"),
                         ui.input_select(
                             "chk_sort_by", "Sort rows by:",
-                            choices={
-                                "start_date":              "Start Date",
-                                "primary_completion_date": "Primary Completion Date",
-                                "completion_date":         "Completion Date",
-                                "phases":                  "Phase",
-                            },
+                            choices=SORT_CHOICES,
                             selected="start_date",
                         ),
                         width="280px",
                         id="chk_sidebar",
                     ),
                     ui.div(
-                        ui.div(
-                            ui.tags.button(
-                                type="button",
-                                class_="btn-close py-1",
-                                **{"data-bs-dismiss": "alert", "aria-label": "Close"},
-                            ),
-                            ui.tags.i(class_="bi bi-info-circle me-2"),
+                        dismissible_alert(
                             "Click an NCT number to review and edit derived fields (Compound, Indication, Acronym) for that trial.",
-                            class_="alert alert-primary alert-dismissible fade show small my-1 py-1 d-flex align-items-center",
-                            role="alert",
+                            level="primary",
                         ),
                         ui.output_ui("checking_table"),
                     ),
@@ -469,7 +429,7 @@ def archive_server(input, output, session,
         ui.modal_remove()   # clear any existing modal before showing a new one
         diffs = _update_diffs.get() or {}
         row_diffs = diffs.get(nct, [])
-        df = _active_data()
+        df = active_data()
         archived_row = {}
         if df is not None:
             rows = df[df["nct_number"] == nct]
@@ -570,7 +530,7 @@ def archive_server(input, output, session,
         edits = _pending_edits.get().copy()
         if nct not in edits:
             edits[nct] = {}
-        df = _active_data()
+        df = active_data()
         if df is not None:
             for field in _DERIVED_FIELDS:
                 if field in df.columns:
@@ -613,7 +573,7 @@ def archive_server(input, output, session,
     @reactive.event(input.btn_modal_save)
     def _on_modal_save():
         ui.modal_remove()
-        df = _active_data()
+        df = active_data()
         if df is None:
             return
         df = df.copy()
@@ -671,29 +631,17 @@ def archive_server(input, output, session,
     @output(suspend_when_hidden=False)
     @render.ui
     def chk_compound_ui():
-        df = _active_data()
-        if df is None or df.empty:
-            return ui.div()
-        choices = sorted(df["compound"].dropna().unique().tolist())
-        return ui.input_checkbox_group("chk_compound", "Compound:", choices=choices, selected=choices)
+        return make_filter_ui(active_data, "compound", "chk_compound", "Compound:")
 
     @output(suspend_when_hidden=False)
     @render.ui
     def chk_indication_ui():
-        df = _active_data()
-        if df is None or df.empty:
-            return ui.div()
-        choices = sorted(df["indication"].dropna().unique().tolist())
-        return ui.input_checkbox_group("chk_indication", "Indication:", choices=choices, selected=choices)
+        return make_filter_ui(active_data, "indication", "chk_indication", "Indication:")
 
     @output(suspend_when_hidden=False)
     @render.ui
     def chk_phase_ui():
-        df = _active_data()
-        if df is None or df.empty:
-            return ui.div()
-        choices = sorted(df["phases"].dropna().unique().tolist())
-        return ui.input_checkbox_group("chk_phase", "Phase:", choices=choices, selected=choices)
+        return make_filter_ui(active_data, "phases", "chk_phase", "Phase:")
 
     # ── Checking tab output ──────────────────────────────────────────────────
 
@@ -703,7 +651,7 @@ def archive_server(input, output, session,
         diffs = _update_diffs.get()
         if diffs is None:
             return ui.p("No updates to review.", class_="text-muted p-4 text-center")
-        df = _active_data()
+        df = active_data()
         if df is None:
             return ui.div()
 

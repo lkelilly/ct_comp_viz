@@ -11,6 +11,8 @@ Data processing utilities.
 import pandas as pd
 import re
 
+from shiny import ui
+
 from .indication_mapping import map_indication, _SYNONYM_RULES
 
 
@@ -57,6 +59,15 @@ def _derive_cluwe_path(row: dict, query_other_id: str = "") -> str:
 _MASTER_PROTOCOL_KEYWORDS = ["master protocol", "platform trial", "platform study", "umbrella study"]
 
 _MONTH_ONLY = re.compile(r'^\d{4}-\d{2}$')
+
+
+def _pad_month_only(v):
+    """Pad a month-only date string ('YYYY-MM') to the first of the month
+    ('YYYY-MM-01') so it can be parsed as a full date. Non-strings and
+    already-full dates pass through unchanged."""
+    if isinstance(v, str) and _MONTH_ONLY.match(v.strip()):
+        return v.strip() + "-01"
+    return v
 
 
 def _valid_date(v):
@@ -222,6 +233,83 @@ def filter_by_selections(df, input, mappings):
     return df
 
 
+def make_filter_ui(active_data, col, input_id, label):
+    """Render a checkbox-group filter for `col`'s unique values, or an empty
+    div if no data is loaded. Shared by the Trial Information, Visualization,
+    and Archive Checking sidebars."""
+    df = active_data()
+    if df is None or df.empty:
+        return ui.div()
+    choices = sorted(df[col].dropna().unique().tolist())
+    return ui.input_checkbox_group(input_id, label, choices=choices, selected=choices)
+
+
+# Shared "Sort rows by" choices used by Trial Information, Visualization, and
+# Archive Checking sidebars.
+SORT_CHOICES = {
+    "start_date":              "Start Date",
+    "primary_completion_date": "Primary Completion Date",
+    "completion_date":         "Completion Date",
+    "phases":                  "Phase",
+}
+
+
+def filter_header():
+    """Shared 'TRIAL FILTERS' sidebar heading with the Ctrl+Click hint."""
+    return ui.div(
+        ui.h6("TRIAL FILTERS", class_="fs-6 fw-bold"),
+        ui.tags.small("Ctrl+Click to select only one item.",
+                      class_="d-block m-0 text-muted"),
+    )
+
+
+def dismissible_alert(text, level="info"):
+    """Shared dismissible Bootstrap alert with a close button and info icon.
+    `level` is a Bootstrap alert level, e.g. "info", "warning", "primary"."""
+    return ui.div(
+        ui.tags.button(
+            type="button",
+            class_="btn-close mt-1 py-1",
+            **{"data-bs-dismiss": "alert", "aria-label": "Close"},
+        ),
+        ui.tags.i(class_="bi bi-info-circle me-1"),
+        text,
+        class_=f"alert alert-{level} alert-dismissible fade show small py-1 d-flex align-items-center",
+        role="alert",
+    )
+
+
+# Shared display labels for trial/table columns. Used as-is by viz.py, and
+# extended with file-specific overrides by trial_info.py and archive.py where
+# the two disagree on wording for the same column (outcome measures columns).
+COL_LABELS = {
+    "nct_number":                 "NCT Number",
+    "acronym":                    "Acronym",
+    "study_title":                "Study Title",
+    "indication":                 "Indication",
+    "compound":                   "Compound",
+    "relevant_publication":       "Relevant Publication",
+    "publication_source":         "Publication Source",
+    "interventions":              "Interventions",
+    "conditions":                 "Conditions",
+    "enrollment":                 "Enrollment",
+    "start_date":                 "Start Date",
+    "primary_completion_date":    "Primary Completion",
+    "completion_date":            "Completion Date",
+    "phases":                     "Phase",
+    "study_status":               "Status",
+    "study_type":                 "Study Type",
+    "study_results":              "Results",
+    "brief_summary":              "Brief Summary",
+    "simplified_primary_outcome":     "Simplified Primary Outcome",
+    "simplified_secondary_outcome":   "Simplified Secondary Outcome",
+    "inclusion_criteria":         "Inclusion Criteria",
+    "exclusion_criteria":         "Exclusion Criteria",
+    "sponsor":                    "Sponsor",
+    "cluwe_path":                 "CLUWE Path",
+}
+
+
 def _is_isa_master_protocol(title: str, primary_outcome_text: str) -> bool:
     """Return True if this is a master protocol study with ISA in the primary outcome."""
     title_lower = (title or "").lower()
@@ -366,7 +454,6 @@ def _extract_study(study: dict) -> dict:
     conditions  = proto.get("conditionsModule", {})
     arms        = proto.get("armsInterventionsModule", {})
     eligibility = proto.get("eligibilityModule", {})
-    references_mod = proto.get("referencesModule", {})
 
     # Identity
     nct_id  = ident.get("nctId", "")
@@ -391,7 +478,6 @@ def _extract_study(study: dict) -> dict:
     # Conditions — list of strings
     cond_list       = conditions.get("conditions") or []
     cond_str        = " | ".join(cond_list) if cond_list else ""
-    first_condition = cond_list[0].strip() if cond_list else ""
 
     # Eligibility criteria — split into inclusion and exclusion
     inc_criteria, exc_criteria = _split_eligibility(eligibility.get("eligibilityCriteria", ""))
@@ -427,17 +513,11 @@ def _extract_study(study: dict) -> dict:
         None
     )
 
-    # CT.gov reference PMIDs — raw IDs passed to the unified PubMed pipeline
-    refs_list = references_mod.get("references") or []
-    raw_pmids = [ref["pmid"] for ref in refs_list if ref.get("pmid")]
-    ctgov_pmids = " | ".join(raw_pmids) if raw_pmids else "NA"
-
     return {
         "nct_number":                 nct_id,
         "acronym":                    acronym,
         "study_title":                title,
         "conditions":                 cond_str,
-        "first_condition":            first_condition,
         "interventions":              intr_str,
         "enrollment":                 enrollment,
         "start_date":                 start_date,
@@ -458,7 +538,6 @@ def _extract_study(study: dict) -> dict:
         "funder_type":                funder_type,
         "other_ids":                  other_ids,
         "lilly_id":                   lilly_id,
-        "ctgov_pmids":                ctgov_pmids,
         "publications":               "NA",
         "last_update_date":           last_update_date,
     }
@@ -534,10 +613,7 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "", query_other_id: st
                 lambda v: v.strip() if isinstance(v, str) else ""
             )
             # Normalize month-only strings ("YYYY-MM") so pd.to_datetime can parse them
-            df[col] = df[col].apply(
-                lambda v: (v.strip() + "-01")
-                if isinstance(v, str) and _MONTH_ONLY.match(v.strip()) else v
-            )
+            df[col] = df[col].apply(_pad_month_only)
             df[col] = pd.to_datetime(df[col], errors="coerce", utc=False)
 
     # Drop rows where all three date columns are NaT / missing
@@ -593,7 +669,7 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "", query_other_id: st
     if not _indication_present:
         if "conditions" in df.columns:
             def _map_row(row):
-                conds = row.get("conditions") or row.get("first_condition") or ""
+                conds = row.get("conditions") or ""
                 # Use simplified outcomes for matching if available, fall back to full
                 outcome     = row.get("simplified_primary_outcome") or row.get("primary_outcome_measures") or ""
                 title       = row.get("study_title") or ""

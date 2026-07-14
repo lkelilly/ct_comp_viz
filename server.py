@@ -32,6 +32,25 @@ from modules.viz            import viz_server, viz_ui
 from modules.archive        import archive_server, archive_ui
 
 
+# ── Download helpers ────────────────────────────────────────────────────────
+
+def _prep_download_df(df):
+    """Reconstruct date columns from their '_raw' companions (or format the
+    parsed dates) so downloads show the original API strings. Shared by the
+    CSV and Excel download handlers."""
+    date_cols = [c for c in ("start_date", "primary_completion_date", "completion_date", "last_update_date")
+                 if c in df.columns]
+    out = df.copy()
+    for col in date_cols:
+        raw_col = col + "_raw"
+        if raw_col in out.columns:
+            out[col] = out[raw_col]
+            out = out.drop(columns=[raw_col])
+        else:
+            out[col] = out[col].dt.strftime("%Y-%m-%d").fillna("")
+    return out
+
+
 # ── Inner tab set ─────────────────────────────────────────────────────────────
 
 def _tab_console():
@@ -76,9 +95,6 @@ def server(input, output, session):
     data_source     = reactive.Value(None)     # "fetch" | "upload"
     edit_panel_open = reactive.Value(False)
     session_archive = reactive.Value([])
-
-    is_loading      = reactive.Value(False)
-    load_progress   = reactive.Value((0, 0))
 
     api_data        = reactive.Value(None)
     upload_data     = reactive.Value(None)
@@ -129,20 +145,14 @@ def server(input, output, session):
 
     async def _run_fetch(kwargs):
         api_error.set(None)
-        is_loading.set(True)
-        load_progress.set((0, 0))
 
         _log(f"Query: {_summarize_kwargs(kwargs)}")
         _log(f"Fetching from ClinicalTrials.gov  (max {kwargs.get('max_results', 500)} results)…")
 
         t0 = time.time()
 
-        async def _on_progress(fetched, total):
-            load_progress.set((fetched, total))
-            await asyncio.sleep(0)
-
         try:
-            studies, total = await fetch_studies(**kwargs, progress_callback=_on_progress)
+            studies, total = await fetch_studies(**kwargs)
             elapsed = round(time.time() - t0, 1)
             fetched = len(studies)
             capped  = fetched < total
@@ -188,9 +198,6 @@ def server(input, output, session):
         except Exception as e:
             _log(f"Unexpected error: {e}", level="error")
             api_error.set(str(e))
-        finally:
-            is_loading.set(False)
-            load_progress.set((0, 0))
 
         return False
 
@@ -201,9 +208,7 @@ def server(input, output, session):
     def _on_mode_fetch():
         current_mode.set("fetch")
         edit_panel_open.set(False)
-        if data_source.get() in ("fetch", "upload") and (
-            api_data.get() is not None or upload_data.get() is not None
-        ):
+        if data_source.get() in ("fetch", "upload"):
             app_state.set("loaded")
         else:
             app_state.set("source_selection")
@@ -274,16 +279,7 @@ def server(input, output, session):
         if df is None:
             return
         import io
-        date_cols = [c for c in ("start_date", "primary_completion_date", "completion_date", "last_update_date")
-                     if c in df.columns]
-        out = df.copy()
-        for col in date_cols:
-            raw_col = col + "_raw"
-            if raw_col in out.columns:
-                out[col] = out[raw_col]
-                out = out.drop(columns=[raw_col])
-            else:
-                out[col] = out[col].dt.strftime("%Y-%m-%d").fillna("")
+        out = _prep_download_df(df)
         # Replace embedded newlines in all string columns so Excel doesn't split rows
         for col in out.select_dtypes(include="object").columns:
             out[col] = out[col].astype(str).str.replace(r"\r\n|\r|\n", " ", regex=True)
@@ -298,16 +294,7 @@ def server(input, output, session):
         if df is None:
             return
         import io
-        date_cols = [c for c in ("start_date", "primary_completion_date", "completion_date", "last_update_date")
-                     if c in df.columns]
-        out = df.copy()
-        for col in date_cols:
-            raw_col = col + "_raw"
-            if raw_col in out.columns:
-                out[col] = out[raw_col]
-                out = out.drop(columns=[raw_col])
-            else:
-                out[col] = out[col].dt.strftime("%Y-%m-%d").fillna("")
+        out = _prep_download_df(df)
         # Excel handles multi-line cells natively — no newline stripping needed
         # Pre-truncate to Excel's hard 32,767 char-per-cell limit to suppress openpyxl warnings
         EXCEL_MAX = 32_767
@@ -377,7 +364,7 @@ def server(input, output, session):
         mode   = current_mode.get()
         source = data_source.get()
         df     = active_data()
-        count  = len(df) if df is not None else 0
+        count  = len(df)
 
         parts = []
         if source == "fetch":
@@ -431,8 +418,7 @@ def server(input, output, session):
                     parts.append(f"{label}: {f or ''} - {t or ''}")
         elif source == "upload":
             info = upload_info.get()
-            if info:
-                parts.append(f"Dataset: {info['filename']}")
+            parts.append(f"Dataset: {info['filename']}")
         elif mode == "archive":
             parts.append("Archive dataset")
 
@@ -642,10 +628,7 @@ def server(input, output, session):
 
     query_server(
         input, output, session,
-        current_mode=current_mode,
         app_state=app_state,
-        is_loading=is_loading,
-        load_progress=load_progress,
         api_data=api_data,
         upload_data=upload_data,
         query_params=query_params,
@@ -667,10 +650,10 @@ def server(input, output, session):
         input, output, session,
         session_archive=session_archive,
         app_state=app_state,
-        current_mode=current_mode,
         data_source=data_source,
         api_data=api_data,
         upload_data=upload_data,
         archive_update_status=archive_update_status,
+        active_data=active_data,
         log_fn=_log,
     )
