@@ -129,11 +129,14 @@ def _e(val):
     return _html.escape(str(val) if val is not None else "")
 
 
-def _trunc(val, field):
+def _trunc_span(val, field):
+    """Escaped HTML for a value; wraps in a hoverable span with the full
+    text in data-full when the value is actually truncated."""
     s = str(val) if val is not None else ""
     if field in _TRUNCATE_COLS and len(s) > _TRUNCATE_LEN:
-        s = s[:_TRUNCATE_LEN] + "…"
-    return s
+        short = s[:_TRUNCATE_LEN] + "…"
+        return f'<span class="trunc" data-full="{_e(s)}">{_e(short)}</span>'
+    return _e(s)
 
 
 def _build_diff_datatable(df, diffs_by_nct, pending):
@@ -192,16 +195,16 @@ def _build_diff_datatable(df, diffs_by_nct, pending):
                 out[col] = _e(str(display_val) if display_val else "")
             elif col in row_diffs and is_changed:
                 diff = row_diffs[col]
-                old_s = _trunc(arch_val, col)
-                new_s = _trunc(diff["current_value"] or "", col)
+                old_html = _trunc_span(arch_val, col)
+                new_html = _trunc_span(diff["current_value"] or "", col)
                 out[col] = (
                     f'<div style="border-left:3px solid #f0c040;padding-left:5px;background:#fffde7">'
-                    f'<span style="color:#aaa;font-size:.82em;display:block">{_e(old_s)}</span>'
-                    f'<span style="font-weight:500;display:block">{_e(new_s)}</span>'
+                    f'<span style="color:#aaa;font-size:.82em;display:block">{old_html}</span>'
+                    f'<span style="font-weight:500;display:block">{new_html}</span>'
                     f'</div>'
                 )
             else:
-                out[col] = _e(_trunc(arch_val, col))
+                out[col] = _trunc_span(arch_val, col)
 
         display_rows.append(out)
 
@@ -245,8 +248,11 @@ _MONTH_ONLY_ARCHIVE = re.compile(r'^\d{4}-\d{2}$')
 def _normalize_archive_dates(df: pd.DataFrame) -> pd.DataFrame:
     """Normalize date columns in a CSV-loaded archive DataFrame to YYYY-MM-DD strings.
 
-    Month-only values (YYYY-MM) are preserved as-is. Unparseable values are left
-    unchanged. Non-string values (e.g. already-parsed Timestamps) are skipped.
+    Month-only values (YYYY-MM) are padded to the first of the month, matching
+    process_raw_ctgov()'s handling so downstream date parsing (e.g. the
+    Visualization tab) treats them the same as fetched/uploaded data.
+    Unparseable values are left unchanged. Non-string values (e.g.
+    already-parsed Timestamps) are skipped.
     """
     df = df.copy()
     for col in _DATE_COLS:
@@ -260,7 +266,7 @@ def _normalize_archive_dates(df: pd.DataFrame) -> pd.DataFrame:
             if not v or v in ("NaT", "nan"):
                 return v
             if _MONTH_ONLY_ARCHIVE.match(v):
-                return v
+                v = v + "-01"
             try:
                 return pd.to_datetime(v, dayfirst=False).strftime("%Y-%m-%d")
             except Exception:

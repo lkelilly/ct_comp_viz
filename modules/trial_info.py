@@ -36,6 +36,7 @@ TRIAL_TABLE_LABELS = {
     "inclusion_criteria":                "Inclusion Criteria",
     "exclusion_criteria":                "Exclusion Criteria",
     "sponsor":                    "Sponsor",
+    "cluwe_path":                 "CLUWE Path",
 }
 
 TRUNCATE_COLS = [
@@ -159,15 +160,6 @@ def trial_info_server(input, output, session, active_data):
         display_cols = [TRIAL_TABLE_LABELS[c] for c in TRIAL_TABLE_LABELS if c in df.columns]
         df_display = df_display[display_cols]
 
-        truncate_labels = [TRIAL_TABLE_LABELS.get(c, c) for c in TRUNCATE_COLS]
-        for col in truncate_labels:
-            if col in df_display.columns:
-                df_display[col] = df_display[col].apply(
-                    lambda x: (str(x)[:TRUNCATE_LENGTH] + "…")
-                    if isinstance(x, str) and len(x) > TRUNCATE_LENGTH
-                    else x
-                )
-
         pub_label = TRIAL_TABLE_LABELS.get("relevant_publication", "Relevant Publication")
         col_defs = []
         if pub_label in display_cols:
@@ -184,6 +176,23 @@ def trial_info_server(input, output, session, active_data):
                     "    }"
                     "    return part;"
                     "  }).join('');"
+                    "}"
+                ),
+            })
+
+        truncate_labels = [TRIAL_TABLE_LABELS.get(c, c) for c in TRUNCATE_COLS]
+        truncate_idxs = [display_cols.index(lbl) for lbl in truncate_labels if lbl in display_cols]
+        if truncate_idxs:
+            col_defs.append({
+                "targets": truncate_idxs,
+                "render": JavascriptFunction(
+                    "function(data, type, row) {"
+                    "  if (type !== 'display' || data == null) return data;"
+                    "  var s = String(data);"
+                    f"  if (s.length <= {TRUNCATE_LENGTH}) return s;"
+                    f"  var shortText = s.slice(0, {TRUNCATE_LENGTH}) + '…';"
+                    "  var fullAttr = s.replace(/\"/g, '&quot;');"
+                    "  return '<span class=\"trunc\" data-full=\"' + fullAttr + '\">' + shortText + '</span>';"
                     "}"
                 ),
             })

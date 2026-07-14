@@ -340,7 +340,11 @@ def query_server(input, output, session,
         load_progress.set((0, 0))
         try:
             df = read_uploaded_csv_fn(path)
-            df = process_fn(df, query_intr=input.query_intr_land() or "")
+            df = process_fn(
+                df,
+                query_intr=input.query_intr_land() or "",
+                query_other_id=(input.query_other_id_land() if input.include_other_id_land() else ""),
+            )
             with ui.Progress(min=0, max=3) as p:
                 p.set(0, message="Processing upload", detail="Processing data...")
                 await asyncio.sleep(0)

@@ -14,10 +14,14 @@ All renderUI logic lives in server.py.
 
 from shiny import ui
 
+from core.utils import TRUNC_TOOLTIP_CSS, TRUNC_TOOLTIP_JS
+
 app_ui = ui.page_bootstrap(
     ui.head_content(
         ui.tags.script(src="https://cdn.plot.ly/plotly-3.0.1.min.js"),
         ui.busy_indicators.use(pulse=True),
+        ui.tags.style(TRUNC_TOOLTIP_CSS),
+        ui.tags.script(ui.HTML(TRUNC_TOOLTIP_JS)),
         ui.tags.style("""
             body { font-family: system-ui, Avenir, Helvetica, Arial, sans-serif; margin: 0; }
             .bslib-sidebar-layout { height: calc(100vh - 56px); }
