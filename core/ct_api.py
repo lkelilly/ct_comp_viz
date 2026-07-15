@@ -7,6 +7,7 @@ Uses requests (synchronous) run inside a thread executor, preventing
 Shiny async event loop from being blocked.
 """
 
+import re
 import requests
 import time
 
@@ -158,6 +159,19 @@ def _get(params):
 
 ## current filters and stuff, subject to change if needed
 
+# CT.gov's Essie parser AND-matches bare whitespace-separated words by default
+# (e.g. "oral semaglutide" == "oral AND semaglutide"). Quoting a multi-word
+# term forces exact-phrase matching instead, which is the behavior we want.
+_ESSIE_SPECIAL_RE = re.compile(r'["\[\]()]|\b(?:AND|OR|NOT)\b', re.IGNORECASE)
+
+
+def _quote_phrase(text):
+    text = text.strip()
+    if not text or " " not in text or _ESSIE_SPECIAL_RE.search(text):
+        return text
+    return f'"{text}"'
+
+
 def _add_adv_filter(adv, items, area_field):
     active = [x for x in (items or []) if x]
     if active:
@@ -199,9 +213,11 @@ def _build_params(
 
     adv = []
 
-    _intr  = query_intr.strip()  if (query_intr  and query_intr.strip())  else ""
-    _alts  = [o.strip() for o in query_other_id.replace(",", " ").split() if o.strip()] \
-             if (query_other_id and query_other_id.strip()) else []
+    # OR deliminator: , and | — split literally on either, then phrase-quote
+    # each term so multi-word terms on either side of the OR stay intact.
+    _intr = _quote_phrase(query_intr.strip()) if (query_intr and query_intr.strip()) else ""
+    _alts = [_quote_phrase(o.strip()) for o in re.split(r'[,|]+', query_other_id) if o.strip()] \
+            if (query_other_id and query_other_id.strip()) else []
 
     if _intr and _alts:
         _add_text(params, "query.intr", " OR ".join([_intr] + _alts))
@@ -247,4 +263,4 @@ def _build_params(
 
 def _add_text(params, key, value):
     if value and isinstance(value, str) and value.strip():
-        params[key] = value.strip()
+        params[key] = _quote_phrase(value.strip())

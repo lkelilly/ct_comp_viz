@@ -27,6 +27,11 @@ _COMPARATOR_NAME_RE = re.compile(
 
 _LY_NUMBER_RE = re.compile(r'\bLY\d{6,7}\b', re.IGNORECASE)
 
+# Lilly protocol IDs
+# 3-char program code - 2-letter infix - 4 char suffix. Only match this shape
+# only against the structured other_ids field
+_LILLY_PROTOCOL_ID_RE = re.compile(r'\b[A-Z0-9]{3}-[A-Z]{2}-[A-Z]{4}\b', re.IGNORECASE)
+
 
 def _is_comparator(part: str) -> bool:
     if _PLACEBO_TYPE_RE.match(part):
@@ -35,17 +40,31 @@ def _is_comparator(part: str) -> bool:
     return bool(_COMPARATOR_NAME_RE.match(name))
 
 
-def _derive_cluwe_path(row: dict, query_other_id: str = "") -> str:
+def _strip_comparator_arms(interventions_str: str) -> str:
+    if not isinstance(interventions_str, str) or not interventions_str.strip():
+        return ""
+    parts = [p.strip() for p in interventions_str.split('|') if p.strip()]
+    parts = [p for p in parts if not _is_comparator(p)]
+    return " | ".join(parts)
+
+
+def _derive_cluwe_path(row: dict, query_other_id: str = "", query_intr: str = "") -> str:
     if str(row.get("sponsor", "")) != "Eli Lilly and Company":
         return ""
-    # Get LY number: user-supplied takes priority, then scan title/interventions
+    # Get LY number: user-supplied (alt-compound box, then intervention box) takes
+    # priority and applies unconditionally; otherwise scan title/interventions
+    # (comparator arms stripped first) for an incidentally-mentioned LY number.
     m = _LY_NUMBER_RE.search(query_other_id)
+    if not m:
+        m = _LY_NUMBER_RE.search(query_intr)
     if m:
         ly = m.group(0).lower()
     else:
         ly = ""
-        for field in ("study_title", "interventions"):
-            m = _LY_NUMBER_RE.search(str(row.get(field, "") or ""))
+        title_text = str(row.get("study_title", "") or "")
+        interventions_text = _strip_comparator_arms(str(row.get("interventions", "") or ""))
+        for text in (title_text, interventions_text):
+            m = _LY_NUMBER_RE.search(text)
             if m:
                 ly = m.group(0).lower()
                 break
@@ -54,7 +73,7 @@ def _derive_cluwe_path(row: dict, query_other_id: str = "") -> str:
     if not ly or not protocol_id:
         return ""
     protocol_slug = protocol_id.lower().replace("-", "_")
-    return f"/lillyce/qa/{ly}/{protocol_slug}"
+    return f"/lillyce/prd/{ly}/{protocol_slug}"
 
 _MASTER_PROTOCOL_KEYWORDS = ["master protocol", "platform trial", "platform study", "umbrella study"]
 
@@ -211,24 +230,35 @@ def input_exists(input, name):
 
 
 def resolve_selection(input, input_id, valid_values):
-    """Active selection for a checkbox group, falling back to *all* valid values
-    when the input doesn't exist yet, holds a stale selection from a previous
-    dataset, or is empty. `valid_values` = the column's current unique values."""
+    """Active selection for a checkbox group, falling back to *all* valid
+    values when the input doesn't exist yet or holds a stale selection with
+    no overlap in `valid_values` (e.g. after a dataset swap). An existing
+    input that is legitimately empty (every box unchecked) is respected as
+    "select nothing." `valid_values` = the column's current unique values."""
     valid = set(valid_values)
-    raw = list(input[input_id]()) if input_exists(input, input_id) else []
-    return raw if raw and set(raw).issubset(valid) else sorted(valid)
+    if not input_exists(input, input_id):
+        return sorted(valid)
+    raw = list(input[input_id]())
+    if raw and not set(raw).issubset(valid):
+        return sorted(valid)
+    return raw
 
 
 def filter_by_selections(df, input, mappings):
     """Filter `df` by one or more checkbox-group selections. `mappings` is an
-    iterable of (column, input_id) pairs. Columns absent from `df` are skipped;
-    a selection covering every value is a no-op."""
+    iterable of (column, input_id) pairs. Columns absent from `df` are skipped.
+    Each column's valid domain is computed from the full, unfiltered `df` (not
+    a running/narrowed copy), so a deliberate selection with no overlap with
+    another filter's selection — e.g. a compound that has no studies at the
+    selected phase — correctly empties the result instead of being treated as
+    a stale/invalid input."""
+    full = df
     for col, input_id in mappings:
         if col not in df.columns:
             continue
-        valid = df[col].dropna().unique()
-        keep = resolve_selection(input, input_id, valid)
-        if set(keep) != set(valid):
+        full_valid = full[col].dropna().unique()
+        keep = resolve_selection(input, input_id, full_valid)
+        if set(keep) != set(full_valid):
             df = df[df[col].isin(keep)]
     return df
 
@@ -260,6 +290,28 @@ def filter_header():
         ui.h6("TRIAL FILTERS", class_="fs-6 fw-bold"),
         ui.tags.small("Ctrl+Click to select only one item.",
                       class_="d-block m-0 text-muted"),
+    )
+
+
+def filter_sort_sidebar(prefix):
+    """Shared compound/indication/phase filter + sort-by sidebar, keyed by
+    `prefix` (e.g. "ti" or "chk") for its output/input ids. Used by the Trial
+    Information tab and the Archive Checking tab, which render an identical
+    sidebar shape."""
+    return ui.sidebar(
+        filter_header(),
+        ui.output_ui(f"{prefix}_compound_ui"),
+        ui.output_ui(f"{prefix}_indication_ui"),
+        ui.output_ui(f"{prefix}_phase_ui"),
+        ui.hr(class_="my-1"),
+        ui.h6("SORT", class_="fs-6 fw-bold"),
+        ui.input_select(
+            f"{prefix}_sort_by", "Sort rows by:",
+            choices=SORT_CHOICES,
+            selected="start_date",
+        ),
+        width="280px",
+        id=f"{prefix}_sidebar",
     )
 
 
@@ -335,7 +387,7 @@ def _extract_title_acronym(title: str, synonym_terms: frozenset = frozenset()) -
     """Extract a trailing all-caps parenthetical from a title, e.g. 'Study (ACRONYM)' → 'ACRONYM'."""
     if not isinstance(title, str):
         return ""
-    m = re.search(r'\(([A-Z][A-Z0-9\-]+)\)\s*$', title.strip())
+    m = re.search(r'\(([A-Z][A-Z0-9]*(?:-[A-Za-z0-9]+)*)\)\s*$', title.strip())
     if not m:
         return ""
     candidate = m.group(1)
@@ -372,9 +424,10 @@ def _match_compound(interventions_str: str, query_intr: str = "") -> str:
                 return part
         return parts[0]
     else:
-        # AND logic: display user's search terms joined with AND
-        terms = [t.strip() for t in re.split(r'[,\s]+', query_intr.strip()) if t.strip()]
-        return " AND ".join(terms) if terms else parts[0]
+        # Phrase logic: query_intr is sent to the API as one exact phrase,
+        # so display it as-is rather than splitting it into AND'd terms.
+        term = query_intr.strip()
+        return term if term else parts[0]
 
 
 def _join_list(items, key, sep=" | "):
@@ -629,7 +682,11 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "", query_other_id: st
                 return None
             if row.get("lilly_id"):
                 return row["lilly_id"]
-            parts = [p.strip() for p in str(row["other_ids"]).split("|")]
+            other_ids_str = str(row["other_ids"])
+            m = _LILLY_PROTOCOL_ID_RE.search(other_ids_str)
+            if m:
+                return m.group(0)
+            parts = [p.strip() for p in other_ids_str.split("|")]
             return parts[1] if len(parts) > 1 else None
         df["lilly_id"] = df.apply(_get_lilly_id, axis=1)
     elif "lilly_id" not in df.columns:
@@ -637,7 +694,7 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "", query_other_id: st
 
     # ── Step 2b: Derive CLUWE path ────────────────────────────────────────────
     df["cluwe_path"] = df.apply(
-        lambda row: _derive_cluwe_path(row, query_other_id), axis=1
+        lambda row: _derive_cluwe_path(row, query_other_id, query_intr), axis=1
     )
 
     # ── Step 3: Acronym fallback ──────────────────────────────────────────────

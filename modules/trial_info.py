@@ -7,7 +7,7 @@ Trial Information tab — UI and server logic.
 from itables import to_html_datatable, JavascriptFunction
 from shiny import render, ui
 
-from core.utils import filter_by_selections, input_exists, make_filter_ui, SORT_CHOICES, filter_header, COL_LABELS
+from core.utils import filter_by_selections, input_exists, make_filter_ui, filter_sort_sidebar, COL_LABELS
 
 
 def _insert_after(d, after_key, extra):
@@ -43,23 +43,7 @@ TRUNCATE_LENGTH = 200
 
 
 def trial_info_ui():
-    sidebar = ui.sidebar(
-        filter_header(),
-        ui.output_ui("ti_compound_ui"),
-        ui.output_ui("ti_indication_ui"),
-        ui.output_ui("ti_phase_ui"),
-
-        ui.hr(class_="my-1"),
-        ui.h6("SORT", class_="fs-6 fw-bold"),
-        ui.input_select(
-            "ti_sort_by", "Sort rows by:",
-            choices=SORT_CHOICES,
-            selected="start_date",
-        ),
-
-        width="280px",
-        id="ti_sidebar",
-    )
+    sidebar = filter_sort_sidebar("ti")
 
     return ui.nav_panel(
         "Trial Information",

@@ -428,7 +428,7 @@ def viz_server(input, output, session, active_data):
                         hovertemplate=f"Primary completion: {t_primary_label}<extra></extra>",
                     ))
 
-                # Right-side label: acronym only (if enabled and differs from NCT)
+                # Right-side label: acronym (if enabled and differs from NCT)
                 if mark_acronym and acronym != nct:
                     fig.add_annotation(
                         x=t_end,
@@ -471,11 +471,11 @@ def viz_server(input, output, session, active_data):
             x_dtick = "M60" if year_span > 30 else "M36" if year_span >= 24 else "M12"
 
             fig.update_xaxes(
+                side="top",
                 type="date",
                 range=x_range,
                 tickformat="%Y",
                 dtick=x_dtick,
-                tickangle=45,
                 tickfont=dict(size=base_font),
                 showgrid=True,
                 gridcolor="#e0e0e0",

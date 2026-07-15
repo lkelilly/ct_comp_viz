@@ -22,10 +22,10 @@ from shiny import reactive, render, ui
 
 from core.utils import (
     read_uploaded_csv, filter_by_selections, input_exists,
-    make_filter_ui, SORT_CHOICES, filter_header, dismissible_alert, COL_LABELS,
+    make_filter_ui, filter_sort_sidebar, dismissible_alert, COL_LABELS,
     _pad_month_only,
 )
-from core.ct_api import fetch_studies
+from core.ct_api import fetch_studies, CTGovAPIError, CTGovNetworkError
 from core.utils import _extract_study
 
 
@@ -348,25 +348,44 @@ def archive_server(input, output, session,
         archive_update_status.set({"checking": True})
         nct_ids = df["nct_number"].dropna().tolist()
         diffs_by_nct = {}
-        with ui.Progress(min=0, max=2) as p:
-            p.set(0, message="Fetching latest data from ClinicalTrials.gov…")
-            studies, _ = await fetch_studies(
-                query_id=" OR ".join(nct_ids), max_results=len(nct_ids)
-            )
-            fresh_by_nct = {
-                row["nct_number"]: row
-                for row in [_extract_study(s) for s in studies]
-            }
-            p.set(1, message="Comparing fields…")
-            for _, archived in df.iterrows():
-                nct = archived["nct_number"]
-                fresh = fresh_by_nct.get(nct)
-                if fresh is None:
-                    continue
-                field_diffs = compare_trial_fields(dict(archived), fresh)
-                if field_diffs:
-                    diffs_by_nct[nct] = field_diffs
-            p.set(2)
+        try:
+            with ui.Progress(min=0, max=2) as p:
+                p.set(0, message="Fetching latest data from ClinicalTrials.gov…")
+                studies, _ = await fetch_studies(
+                    query_id=" OR ".join(nct_ids), max_results=len(nct_ids)
+                )
+                fresh_by_nct = {
+                    row["nct_number"]: row
+                    for row in [_extract_study(s) for s in studies]
+                }
+                p.set(1, message="Comparing fields…")
+                for _, archived in df.iterrows():
+                    nct = archived["nct_number"]
+                    fresh = fresh_by_nct.get(nct)
+                    if fresh is None:
+                        continue
+                    field_diffs = compare_trial_fields(dict(archived), fresh)
+                    if field_diffs:
+                        diffs_by_nct[nct] = field_diffs
+                p.set(2)
+        except CTGovAPIError as e:
+            archive_update_status.set({})
+            if log_fn:
+                log_fn(f"Archive check: API error: {e}", level="error")
+            ui.notification_show(f"API error: {e}", type="error", duration=6)
+            return
+        except CTGovNetworkError as e:
+            archive_update_status.set({})
+            if log_fn:
+                log_fn(f"Archive check: network error: {e}", level="error")
+            ui.notification_show(f"Network error: {e}", type="error", duration=6)
+            return
+        except Exception as e:
+            archive_update_status.set({})
+            if log_fn:
+                log_fn(f"Archive check: unexpected error: {e}", level="error")
+            ui.notification_show(f"Could not check updates: {e}", type="error", duration=6)
+            return
 
         if log_fn:
             log_fn(f"Archive check: {len(nct_ids)} trial(s) queried from ClinicalTrials.gov")
@@ -389,21 +408,7 @@ def archive_server(input, output, session,
             ui.nav_panel(
                 "Checking",
                 ui.layout_sidebar(
-                    ui.sidebar(
-                        filter_header(),
-                        ui.output_ui("chk_compound_ui"),
-                        ui.output_ui("chk_indication_ui"),
-                        ui.output_ui("chk_phase_ui"),
-                        ui.hr(class_="my-1"),
-                        ui.h6("SORT", class_="fs-6 fw-bold"),
-                        ui.input_select(
-                            "chk_sort_by", "Sort rows by:",
-                            choices=SORT_CHOICES,
-                            selected="start_date",
-                        ),
-                        width="280px",
-                        id="chk_sidebar",
-                    ),
+                    filter_sort_sidebar("chk"),
                     ui.div(
                         dismissible_alert(
                             "Click an NCT number to review and edit derived fields (Compound, Indication, Acronym) for that trial.",
@@ -575,56 +580,76 @@ def archive_server(input, output, session,
         ui.modal_remove()
         df = active_data()
         if df is None:
+            if log_fn:
+                log_fn("Save to session: no active data to save", level="error")
+            ui.notification_show("No active data to save.", type="error", duration=5)
             return
-        df = df.copy()
-        diffs  = _update_diffs.get() or {}
-        fresh  = _update_fresh.get() or {}
-        edits  = _pending_edits.get()
+        try:
+            df = df.copy()
+            diffs  = _update_diffs.get() or {}
+            fresh  = _update_fresh.get() or {}
+            edits  = _pending_edits.get()
 
-        # Apply user edits to derived fields
-        for nct, field_map in edits.items():
-            mask = df["nct_number"] == nct
-            for field, value in field_map.items():
-                if field in df.columns:
-                    df.loc[mask, field] = value
+            # Columns that are entirely NaN get inferred as float64 by pandas;
+            # writing text into them later raises "Invalid value ... for dtype
+            # 'float64'". Widen to object dtype for any field we're about to write.
+            written_fields = set()
+            for field_map in edits.values():
+                written_fields.update(field_map.keys())
+            for field_diffs in diffs.values():
+                written_fields.update(d["field"] for d in field_diffs)
+            for field in written_fields:
+                if field in df.columns and df[field].dtype != object:
+                    df[field] = df[field].astype(object)
 
-        # Apply fresh values for all other changed raw fields
-        for nct, field_diffs in diffs.items():
-            mask = df["nct_number"] == nct
-            fresh_row = fresh.get(nct, {})
-            nct_edits = edits.get(nct) or {}
-            for diff in field_diffs:
-                field = diff["field"]
-                if field in df.columns and field not in nct_edits:
-                    df.loc[mask, field] = fresh_row.get(field, diff["current_value"])
+            # Apply user edits to derived fields
+            for nct, field_map in edits.items():
+                mask = df["nct_number"] == nct
+                for field, value in field_map.items():
+                    if field in df.columns:
+                        df.loc[mask, field] = value
 
-        # Set as active data
-        if api_data.get() is not None:
-            api_data.set(df)
-        else:
-            upload_data.set(df)
+            # Apply fresh values for all other changed raw fields
+            for nct, field_diffs in diffs.items():
+                mask = df["nct_number"] == nct
+                fresh_row = fresh.get(nct, {})
+                nct_edits = edits.get(nct) or {}
+                for diff in field_diffs:
+                    field = diff["field"]
+                    if field in df.columns and field not in nct_edits:
+                        df.loc[mask, field] = fresh_row.get(field, diff["current_value"])
 
-        # Save to session archive
-        name = (input.save_session_name() or "").strip() or "Updated dataset"
-        src  = _source_label.get() or "archive"
-        n_updated = len(diffs)
-        records = session_archive.get().copy()
-        records.append({
-            "label":       name,
-            "save_date":   date.today().strftime("%Y-%m-%d"),
-            "description": f"Updated from '{src}' — {n_updated} trial(s) updated.",
-            "df":          df,
-        })
-        session_archive.set(records)
-        if log_fn:
-            log_fn(f"Saved to session: '{name}' — {n_updated} trial(s) updated", level="ok")
+            # Set as active data
+            if api_data.get() is not None:
+                api_data.set(df)
+            else:
+                upload_data.set(df)
 
-        _update_diffs.set(None)
-        _update_fresh.set(None)
-        _pending_edits.set({})
-        archive_update_status.set({"applied": n_updated})
-        ui.update_navset("inner_tabs", selected="Trial Information")
-        ui.remove_nav_panel("inner_tabs", "Checking")
+            # Save to session archive
+            name = (input.save_session_name() or "").strip() or "Updated dataset"
+            src  = _source_label.get() or "archive"
+            n_updated = len(diffs)
+            records = session_archive.get().copy()
+            records.append({
+                "label":       name,
+                "save_date":   date.today().strftime("%Y-%m-%d"),
+                "description": f"Updated from '{src}' — {n_updated} trial(s) updated.",
+                "df":          df,
+            })
+            session_archive.set(records)
+            if log_fn:
+                log_fn(f"Saved to session: '{name}' — {n_updated} trial(s) updated", level="ok")
+
+            _update_diffs.set(None)
+            _update_fresh.set(None)
+            _pending_edits.set({})
+            archive_update_status.set({"applied": n_updated})
+            ui.update_navset("inner_tabs", selected="Trial Information")
+            ui.remove_nav_panel("inner_tabs", "Checking")
+        except Exception as e:
+            if log_fn:
+                log_fn(f"Save to session: unexpected error: {e}", level="error")
+            ui.notification_show(f"Could not save to session: {e}", type="error", duration=6)
 
     # ── Checking tab filters ─────────────────────────────────────────────────
 
