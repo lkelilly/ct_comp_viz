@@ -312,14 +312,6 @@ def archive_ui():
         ui.hr(class_="my-3"),
         ui.h6("Saved in this session", class_="fw-semibold mb-2"),
         ui.output_ui("session_archive_cards"),
-        ui.tags.script(ui.HTML("""
-document.addEventListener('click', function(e) {
-    var link = e.target.closest('.nct-link');
-    if (!link) return;
-    e.preventDefault();
-    Shiny.setInputValue('selected_nct', link.dataset.nct, {priority: 'event'});
-});
-""")),
         class_="p-3",
     )
 

@@ -115,6 +115,21 @@ def trial_info_server(input, output, session, active_data):
                 ),
             })
 
+        cluwe_label = TRIAL_TABLE_LABELS.get("cluwe_path", "CLUWE Path")
+        if cluwe_label in display_cols:
+            cluwe_idx = display_cols.index(cluwe_label)
+            col_defs.append({
+                "targets": [cluwe_idx],
+                "render": JavascriptFunction(
+                    "function(data, type, row) {"
+                    "  if (type !== 'display' || !data || data === 'NA') return data;"
+                    "  return data.split(' | ').map(function(part) {"
+                    "    return '<span class=\"d-block\">' + part.trim() + '</span>';"
+                    "  }).join('');"
+                    "}"
+                ),
+            })
+
         truncate_labels = [TRIAL_TABLE_LABELS.get(c, c) for c in TRUNCATE_COLS]
         truncate_idxs = [display_cols.index(lbl) for lbl in truncate_labels if lbl in display_cols]
         if truncate_idxs:

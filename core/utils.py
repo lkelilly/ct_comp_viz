@@ -68,12 +68,20 @@ def _derive_cluwe_path(row: dict, query_other_id: str = "", query_intr: str = ""
             if m:
                 ly = m.group(0).lower()
                 break
-    # Get protocol ID from lilly_id column (already derived in Step 2)
-    protocol_id = str(row.get("lilly_id", "") or "").strip()
-    if not ly or not protocol_id:
+    # Get protocol ID(s) from lilly_id column (already derived; may be
+    # multiple " | "-joined IDs for co-development/platform trials)
+    lilly_id_raw = str(row.get("lilly_id", "") or "").strip()
+    if not ly or not lilly_id_raw:
         return ""
-    protocol_slug = protocol_id.lower().replace("-", "_")
-    return f"/lillyce/prd/{ly}/{protocol_slug}"
+    protocol_ids = []
+    for pid in lilly_id_raw.split(" | "):
+        pid = pid.strip()
+        if pid and pid not in protocol_ids:
+            protocol_ids.append(pid)
+    if not protocol_ids:
+        return ""
+    paths = [f"/lillyce/prd/{ly}/{pid.lower().replace('-', '_')}" for pid in protocol_ids]
+    return " | ".join(paths)
 
 _MASTER_PROTOCOL_KEYWORDS = ["master protocol", "platform trial", "platform study", "umbrella study"]
 
@@ -560,11 +568,12 @@ def _extract_study(study: dict) -> dict:
     # Secondary IDs (pipe-joined; used to derive lilly_id downstream)
     secondary_id_infos = ident.get("secondaryIdInfos") or []
     other_ids = " | ".join(item["id"] for item in secondary_id_infos if item.get("id"))
-    lilly_id = next(
-        (item["id"] for item in secondary_id_infos
-         if item.get("domain") == "Eli Lilly and Company" and item.get("id")),
-        None
-    )
+    _seen_lilly_ids = []
+    for item in secondary_id_infos:
+        _id = item.get("id")
+        if item.get("domain") == "Eli Lilly and Company" and _id and _id not in _seen_lilly_ids:
+            _seen_lilly_ids.append(_id)
+    lilly_id = " | ".join(_seen_lilly_ids) if _seen_lilly_ids else None
 
     return {
         "nct_number":                 nct_id,
@@ -675,7 +684,7 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "", query_other_id: st
     if date_cols:
         df = df.dropna(subset=date_cols, how="all")
 
-    # ── Step 2: Derive Lilly compound ID (not displayed in `trail info`) ──────────────────────
+    # ── Step 2: Derive Lilly protocol ID (not displayed in `trail info`) ──────
     if "other_ids" in df.columns and "sponsor" in df.columns:
         def _get_lilly_id(row):
             if row["sponsor"] != "Eli Lilly and Company":
@@ -683,9 +692,13 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "", query_other_id: st
             if row.get("lilly_id"):
                 return row["lilly_id"]
             other_ids_str = str(row["other_ids"])
-            m = _LILLY_PROTOCOL_ID_RE.search(other_ids_str)
-            if m:
-                return m.group(0)
+            matches = _LILLY_PROTOCOL_ID_RE.findall(other_ids_str)
+            if matches:
+                seen = []
+                for mm in matches:
+                    if mm not in seen:
+                        seen.append(mm)
+                return " | ".join(seen)
             parts = [p.strip() for p in other_ids_str.split("|")]
             return parts[1] if len(parts) > 1 else None
         df["lilly_id"] = df.apply(_get_lilly_id, axis=1)
@@ -712,8 +725,11 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "", query_other_id: st
             title_acronym = _extract_title_acronym(r.get("study_title") or "", synonym_terms)
             if title_acronym:
                 return title_acronym
-            if isinstance(r.get("lilly_id"), str) and r["lilly_id"].strip():
-                return r["lilly_id"][-4:]
+            lilly_id_val = r.get("lilly_id")
+            if isinstance(lilly_id_val, str) and lilly_id_val.strip():
+                first_lilly_id = lilly_id_val.split(" | ")[0].strip()
+                if first_lilly_id:
+                    return first_lilly_id[-4:]
             return r.get("nct_number", "")
         df["acronym"] = df.apply(_resolve_acronym, axis=1)
 

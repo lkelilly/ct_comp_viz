@@ -178,6 +178,16 @@ def viz_server(input, output, session, active_data):
     def viz_dropped_count():
         df, before = _viz_filtered()
         return before - len(df)
+    
+    @reactive.calc
+    def viz_color_map():
+        df = active_data()
+        color_col = input.viz_color_by()
+        if df is None or df.empty or color_col not in df.columns:
+            return {}
+        categories = sorted(df[color_col].dropna().unique().tolist())
+        return {cat: _INDICATION_COLORS[i % len(_INDICATION_COLORS)]
+                for i, cat in enumerate(categories)}
 
     # ── Plot ──────────────────────────────────────────────────────────────────
 
@@ -232,11 +242,10 @@ def viz_server(input, output, session, active_data):
 
             group_col = group_by
 
-            # Assign stable colors to the chosen color-by column
+            # Assign stable colors to the chosen color-by column, static, preserve for data set
             color_col  = color_by
-            categories = sorted(df[color_col].dropna().unique().tolist())
-            color_map  = {cat: _INDICATION_COLORS[i % len(_INDICATION_COLORS)]
-                          for i, cat in enumerate(categories)}
+            color_map  = viz_color_map()
+            categories = [c for c in color_map if c in set(df[color_col].dropna().unique())]
 
             # ── Build integer y-positions + group axis labels ─────────────────────
             y_pos       = {}   # nct → int
