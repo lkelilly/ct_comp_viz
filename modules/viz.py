@@ -11,7 +11,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from shiny import reactive, render, ui
 
-from core.utils import filter_by_selections, make_filter_ui, SORT_CHOICES, filter_header, dismissible_alert, COL_LABELS
+from core.utils import dismissible_alert, COL_LABELS
+from modules.trial_filters import filter_fields_ui, register_trial_filters, apply_trial_filters, SORT_CHOICES
 
 MAX_VIZ_TRIALS = 300
 
@@ -75,10 +76,7 @@ def viz_ui():
         ),
 
         ui.hr(class_="my-1"),
-        filter_header(),
-        ui.output_ui("viz_compound_ui"),
-        ui.output_ui("viz_indication_ui"),
-        ui.output_ui("viz_phase_ui"),
+        *filter_fields_ui("viz"),
 
         ui.hr(class_="my-1"),
         ui.h6("DISPLAY OPTIONS", class_="fs-6 fw-bold mb-2"),
@@ -124,20 +122,7 @@ def viz_server(input, output, session, active_data):
 
     # ── Dynamic filter widgets ────────────────────────────────────────────────
 
-    @output(suspend_when_hidden=False)
-    @render.ui
-    def viz_compound_ui():
-        return make_filter_ui(active_data, "compound", "viz_compound", "Compound:")
-
-    @output(suspend_when_hidden=False)
-    @render.ui
-    def viz_indication_ui():
-        return make_filter_ui(active_data, "indication", "viz_indication", "Indication:")
-
-    @output(suspend_when_hidden=False)
-    @render.ui
-    def viz_phase_ui():
-        return make_filter_ui(active_data, "phases", "viz_phase", "Phase:")
+    register_trial_filters(output, "viz", active_data)
 
     # ── Filtered + sorted data ────────────────────────────────────────────────
 
@@ -146,11 +131,7 @@ def viz_server(input, output, session, active_data):
         df = active_data()
         if df is None or df.empty:
             return pd.DataFrame(), 0
-        df = filter_by_selections(df, input, [
-            ("compound",   "viz_compound"),
-            ("indication", "viz_indication"),
-            ("phases",     "viz_phase"),
-        ])
+        df = apply_trial_filters(df, input, "viz")
         before = len(df)
         df = df.dropna(subset=["start_date", "completion_date"])
         df["start_date"]      = pd.to_datetime(df["start_date"],      errors="coerce")

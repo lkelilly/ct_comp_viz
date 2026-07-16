@@ -52,12 +52,17 @@ Step 3 — Apply JSON override rules in order (LDL-C, HoFH/HeFH, title-CVOT).
 
 Step 4 — Secondary outcome fallback (override rules only).
 
+Step 5 — Pharmacokinetics fallback (last resort):
+  If primary or secondary outcome text mentions "pharmacokinetic(s)" or a
+  standalone "PK" (word-boundary match) → "Pharmacokinetics".
+
 To update synonyms, priority terms, or override rules, edit indication-rule.json
 only — this file is only processing and rendering.
 """
 
 import json
 import os
+import re
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _SYNONYMS_PATH = os.path.join(_HERE, "indication-rule.json")
@@ -192,5 +197,12 @@ def map_indication(conditions_str: str, outcome_str: str = "", title_str: str = 
             continue
         if rule["if_secondary_outcome_contains"] and any(t in sec_outc_text for t in rule["if_secondary_outcome_contains"]):
             return rule["then_label"]
+
+    # Step 5: if other override/priority rules have not been specified, check for PK
+    _pk_text = outc_text + " " + sec_outc_text
+    if any(term in _pk_text for term in _PRIORITY_RULES.get("pk_terms", [])):
+        return "Pharmacokinetics"
+    if re.search(r"\bpk\b", _pk_text):
+        return "Pharmacokinetics"
 
     return base_label

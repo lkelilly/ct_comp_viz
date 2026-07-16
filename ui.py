@@ -40,6 +40,15 @@ document.addEventListener('click', function(e) {
 });
 """
 
+_TI_NCT_LINK_CLICK_JS = """
+document.addEventListener('click', function(e) {
+    var link = e.target.closest('.ti-nct-link');
+    if (!link) return;
+    e.preventDefault();
+    Shiny.setInputValue('ti_edit_nct', link.dataset.nct, {priority: 'event'});
+});
+"""
+
 app_ui = ui.page_bootstrap(
     ui.head_content(
         ui.tags.script(src="https://cdn.plot.ly/plotly-3.0.1.min.js"),
@@ -48,6 +57,7 @@ app_ui = ui.page_bootstrap(
         ui.tags.script(ui.HTML(TRUNC_TOOLTIP_JS)),
         ui.tags.script(ui.HTML(_CTRL_CLICK_JS)),
         ui.tags.script(ui.HTML(_NCT_LINK_CLICK_JS)),
+        ui.tags.script(ui.HTML(_TI_NCT_LINK_CLICK_JS)),
         ui.tags.style("""
             body { font-family: system-ui, Avenir, Helvetica, Arial, sans-serif; margin: 0; }
             .bslib-sidebar-layout { height: calc(100vh - 56px); }

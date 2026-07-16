@@ -105,6 +105,18 @@ def server(input, output, session):
     # Shape: {"diffs": dict|None, "applied": int|None}
     archive_update_status = reactive.Value({})
 
+    # Edit-mode gates: while either is True, frozen_data holds off picking up
+    # unrelated background changes to active_data() so the Trial Info table,
+    # Visualization, and Checking table don't reload mid-edit.
+    ti_edit_mode    = reactive.Value(False)   # Trial Info "Edit Trials" toggle
+    chk_review_mode = reactive.Value(False)   # Checking tab: diffs loaded, not yet saved
+    edited_ncts     = reactive.Value(set())   # distinct NCTs manually edited this session
+    frozen_data     = reactive.Value(None)    # base snapshot used by table/viz renders
+    # Index into session_archive of the record currently loaded via "Load" (None
+    # if the active data isn't tied to a session record, e.g. fresh fetch/upload
+    # or a curated dataset) — used to rewrite that record when edits are saved.
+    loaded_session_index = reactive.Value(None)
+
     @reactive.calc
     def active_data():
         if api_data.get() is not None:
@@ -112,6 +124,11 @@ def server(input, output, session):
         if upload_data.get() is not None:
             return upload_data.get()
         return None
+
+    @reactive.effect
+    def _sync_frozen_data():
+        if not ti_edit_mode.get() and not chk_review_mode.get():
+            frozen_data.set(active_data())
 
     # ── Logging ───────────────────────────────────────────────────────────────
 
@@ -315,6 +332,8 @@ def server(input, output, session):
     def _reset_check_state_on_load():
         if app_state.get() == "loaded":
             archive_update_status.set({})
+            edited_ncts.set(set())
+            chk_review_mode.set(False)
 
     # ── Navbar renderUI ───────────────────────────────────────────────────────
 
@@ -344,7 +363,7 @@ def server(input, output, session):
                         ui.tags.span("||", class_="nav-link mx-1 px-2 text-white-50 pe-none"),
                         class_="nav-item",
                     ),
-                    _nav_link("btn_mode_archive", "Archive", "archive"),
+                    _nav_link("btn_mode_archive", "Archive Data", "archive"),
                     class_="navbar-nav nav-pills justify-content-center",
                 ),
                 class_="container-fluid",
@@ -454,7 +473,20 @@ def server(input, output, session):
                         class_="small"),
             )
 
-        row_children = [main_info] + ([update_info] if update_info is not None else [])
+        n_edited = len(edited_ncts.get())
+        edited_info = None
+        if n_edited:
+            edited_info = ui.div(
+                ui.span("Edited",
+                        class_="btn btn-sm btn-success me-2 align-middle pe-none"),
+                ui.span(f"{n_edited} trial(s) edited", class_="small"),
+            )
+
+        row_children = [main_info]
+        if update_info is not None:
+            row_children.append(update_info)
+        if edited_info is not None:
+            row_children.append(edited_info)
 
         return ui.div(
             ui.div(*row_children, class_="d-flex justify-content-between align-items-center"),
@@ -565,6 +597,12 @@ def server(input, output, session):
                 class_="btn-group me-2 mt-1",
             ),
         ]
+        if source in ("fetch", "upload"):
+            right_btns.append(
+                ui.input_action_button("btn_save_to_archive", "Save to Archive",
+                                       class_="btn btn-sm btn-primary me-2 mt-1")
+            )
+        right_btns.append(ui.output_ui("ti_edit_btn_ui"))
         if source == "fetch":
             toggle_label = "Hide Query" if edit_panel_open.get() else "Edit Query"
             right_btns.append(
@@ -641,11 +679,17 @@ def server(input, output, session):
         read_uploaded_csv_fn=read_uploaded_csv,
         process_fn=process_raw_ctgov,
         fetch_pubs_fn=add_publications,
+        loaded_session_index=loaded_session_index,
     )
 
-    trial_info_server(input, output, session, active_data=active_data)
+    trial_info_server(input, output, session, active_data=active_data,
+                      display_data=frozen_data, edit_mode=ti_edit_mode,
+                      edited_ncts=edited_ncts,
+                      session_archive=session_archive,
+                      loaded_session_index=loaded_session_index,
+                      api_data=api_data, upload_data=upload_data, log_fn=_log)
     trial_summary_server(input, output, session, active_data=active_data)
-    viz_server(input, output, session, active_data=active_data)
+    viz_server(input, output, session, active_data=frozen_data)
     archive_server(
         input, output, session,
         session_archive=session_archive,
@@ -655,5 +699,8 @@ def server(input, output, session):
         upload_data=upload_data,
         archive_update_status=archive_update_status,
         active_data=active_data,
+        display_data=frozen_data,
+        review_mode=chk_review_mode,
+        loaded_session_index=loaded_session_index,
         log_fn=_log,
     )

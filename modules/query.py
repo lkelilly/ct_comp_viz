@@ -275,7 +275,8 @@ def query_server(input, output, session,
                  app_state,
                  api_data, upload_data, query_params, upload_info, data_source,
                  edit_panel_open, api_error, log_fn,
-                 run_fetch_fn, read_uploaded_csv_fn, process_fn, fetch_pubs_fn):
+                 run_fetch_fn, read_uploaded_csv_fn, process_fn, fetch_pubs_fn,
+                 loaded_session_index=None):
 
     def _query_kwargs_from_land():
         return dict(
@@ -304,6 +305,8 @@ def query_server(input, output, session,
             data_source.set("fetch")
             app_state.set("loaded")
             edit_panel_open.set(False)
+            if loaded_session_index is not None:
+                loaded_session_index.set(None)
 
     # ── Upload ────────────────────────────────────────────────────────────────
 
@@ -334,6 +337,8 @@ def query_server(input, output, session,
             upload_info.set({"filename": name, "count": len(df)})
             data_source.set("upload")
             app_state.set("loaded")
+            if loaded_session_index is not None:
+                loaded_session_index.set(None)
             log_fn(f"Uploaded {name}: {len(df)} rows x {len(df.columns)} columns", level="ok")
             _upload_msg.set(f"Just uploaded:  {name}  ({len(df):,} rows)")
         except Exception as e:

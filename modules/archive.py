@@ -21,10 +21,10 @@ from itables import to_html_datatable, JavascriptFunction
 from shiny import reactive, render, ui
 
 from core.utils import (
-    read_uploaded_csv, filter_by_selections, input_exists,
-    make_filter_ui, filter_sort_sidebar, dismissible_alert, COL_LABELS,
+    read_uploaded_csv, dismissible_alert, COL_LABELS,
     _pad_month_only,
 )
+from modules.trial_filters import input_exists, filter_sort_sidebar, register_trial_filters, apply_trial_filters
 from core.ct_api import fetch_studies, CTGovAPIError, CTGovNetworkError
 from core.utils import _extract_study
 
@@ -180,7 +180,7 @@ def _build_diff_datatable(df, diffs_by_nct, pending):
                 arch_val = ""
 
             if col in _DERIVED_FIELDS:
-                # Read-only — show pending edit value if available, else archived value
+                # Read-only, show pending edit value if available, else archived value
                 display_val = (pending.get(nct) or {}).get(col, arch_val)
                 out[col] = _e(str(display_val) if display_val else "")
             elif col in row_diffs and is_changed:
@@ -310,7 +310,20 @@ def archive_ui():
             class_="row row-cols-1 row-cols-md-2 g-3 mb-3",
         ),
         ui.hr(class_="my-3"),
-        ui.h6("Saved in this session", class_="fw-semibold mb-2"),
+        ui.div(
+            ui.input_file("archive_upload_file", None, accept=".csv", multiple=False),
+            style="display:none;",
+        ),
+        ui.div(
+            ui.h6("Saved in this session", class_="fw-semibold mb-0"),
+            ui.tags.button(
+                "Upload Data to Archive",
+                class_="btn btn-sm btn-outline-dark",
+                onclick="document.getElementById('archive_upload_file').click();",
+                type="button",
+            ),
+            class_="d-flex justify-content-between align-items-center mb-2",
+        ),
         ui.output_ui("session_archive_cards"),
         class_="p-3",
     )
@@ -321,13 +334,18 @@ def archive_ui():
 def archive_server(input, output, session,
                    session_archive, app_state, data_source,
                    api_data, upload_data, archive_update_status, active_data,
+                   display_data=None, review_mode=None, loaded_session_index=None,
                    log_fn=None):
+
+    display_data = display_data if display_data is not None else active_data
+    _chk_review_mode: reactive.Value = review_mode if review_mode is not None else reactive.Value(False)
 
     # Diff state owned entirely here
     _update_diffs:  reactive.Value = reactive.Value(None)
     _update_fresh:  reactive.Value = reactive.Value(None)
     _pending_edits: reactive.Value = reactive.Value({})
     _source_label   = reactive.Value("")
+    _pending_upload_df: reactive.Value = reactive.Value(None)
 
     # ── Check Updates handler ────────────────────────────────────────────────
 
@@ -395,6 +413,7 @@ def archive_server(input, output, session,
         _update_fresh.set(fresh_by_nct)
         _pending_edits.set({})
         archive_update_status.set({"diffs": diffs_by_nct})
+        _chk_review_mode.set(True)
         ui.insert_nav_panel(
             "inner_tabs",
             ui.nav_panel(
@@ -447,8 +466,8 @@ def archive_server(input, output, session,
             for d in row_diffs:
                 field = d["field"]
                 label = _COL_LABELS.get(field, field)
-                old_v = str(d["archived_value"] or "—")
-                new_v = str(d["current_value"] or "—")
+                old_v = str(d["archived_value"] or "-")
+                new_v = str(d["current_value"] or "-")
                 diff_rows.append(
                     ui.div(
                         ui.div(ui.tags.small(label, class_="fw-semibold"), class_="col-3"),
@@ -481,7 +500,7 @@ def archive_server(input, output, session,
             current_val = pending_nct.get(field, archived_row.get(field, ""))
             stale = source_field is not None and source_field in changed_fields
             stale_badge = (
-                ui.span("source changed — review",
+                ui.span("source changed - review",
                         class_="badge bg-warning text-dark ms-2 small")
                 if stale else ui.span()
             )
@@ -504,7 +523,7 @@ def archive_server(input, output, session,
         ui.modal_show(
             ui.modal(
                 *body_items,
-                title=f"Review — {nct}",
+                title=f"Review - {nct}",
                 footer=ui.div(
                     ui.input_action_button(
                         "btn_nct_modal_save", "Save",
@@ -553,6 +572,10 @@ def archive_server(input, output, session,
                 ui.input_text(
                     "save_session_name", "Dataset name",
                     value=_source_label.get() or "Updated dataset",
+                ),
+                ui.input_text_area(
+                    "save_session_desc", "Description (optional)",
+                    value="", width="100%", rows=2,
                 ),
                 title="Save to session",
                 footer=ui.div(
@@ -619,23 +642,26 @@ def archive_server(input, output, session,
 
             # Save to session archive
             name = (input.save_session_name() or "").strip() or "Updated dataset"
+            desc = (input.save_session_desc() or "").strip()
             src  = _source_label.get() or "archive"
             n_updated = len(diffs)
+            description = desc or f"Updated from '{src}' - {n_updated} trial(s) updated."
             records = session_archive.get().copy()
             records.append({
                 "label":       name,
                 "save_date":   date.today().strftime("%Y-%m-%d"),
-                "description": f"Updated from '{src}' — {n_updated} trial(s) updated.",
+                "description": description,
                 "df":          df,
             })
             session_archive.set(records)
             if log_fn:
-                log_fn(f"Saved to session: '{name}' — {n_updated} trial(s) updated", level="ok")
+                log_fn(f"Saved to session: '{name}' - {n_updated} trial(s) updated", level="ok")
 
             _update_diffs.set(None)
             _update_fresh.set(None)
             _pending_edits.set({})
             archive_update_status.set({"applied": n_updated})
+            _chk_review_mode.set(False)
             ui.update_navset("inner_tabs", selected="Trial Information")
             ui.remove_nav_panel("inner_tabs", "Checking")
         except Exception as e:
@@ -643,22 +669,119 @@ def archive_server(input, output, session,
                 log_fn(f"Save to session: unexpected error: {e}", level="error")
             ui.notification_show(f"Could not save to session: {e}", type="error", duration=6)
 
+    # ── Save to Archive (general: current fetched/uploaded/edited data) ──────
+
+    @reactive.effect
+    @reactive.event(input.btn_save_to_archive)
+    def _on_save_to_archive_click():
+        df = active_data()
+        if df is None:
+            if log_fn:
+                log_fn("Save to archive: no active data to save", level="error")
+            ui.notification_show("No active data to save.", type="error", duration=5)
+            return
+        ui.modal_show(
+            ui.modal(
+                ui.input_text(
+                    "save_archive_name", "Dataset name",
+                    value=_source_label.get() or "My dataset",
+                ),
+                ui.input_text_area(
+                    "save_archive_desc", "Description (optional)",
+                    value="", width="100%", rows=2,
+                ),
+                title="Save to archive",
+                footer=ui.div(
+                    ui.input_action_button(
+                        "btn_save_archive_confirm", "Save",
+                        class_="btn btn-primary me-2",
+                    ),
+                    ui.modal_button("Cancel"),
+                ),
+                easy_close=True,
+            )
+        )
+
+    @reactive.effect
+    @reactive.event(input.btn_save_archive_confirm)
+    def _on_save_archive_confirm():
+        ui.modal_remove()
+        df = active_data()
+        if df is None:
+            if log_fn:
+                log_fn("Save to archive: no active data to save", level="error")
+            ui.notification_show("No active data to save.", type="error", duration=5)
+            return
+        name = (input.save_archive_name() or "").strip() or "My dataset"
+        desc = (input.save_archive_desc() or "").strip()
+        records = session_archive.get().copy()
+        records.append({
+            "label":       name,
+            "save_date":   date.today().strftime("%Y-%m-%d"),
+            "description": desc or f"Saved dataset - {len(df)} trial(s).",
+            "df":          df.copy(),
+        })
+        session_archive.set(records)
+        if log_fn:
+            log_fn(f"Saved to archive: '{name}' ({len(df)} rows)", level="ok")
+        ui.notification_show(f"Saved '{name}' to archive.", type="message", duration=4)
+
+    # ── Upload Data to Archive (CSV, saved to session archive directly) ──────
+
+    @reactive.effect
+    @reactive.event(input.archive_upload_file)
+    def _on_archive_upload_file():
+        f = input.archive_upload_file()
+        if not f:
+            return
+        try:
+            df = read_uploaded_csv(f[0]["datapath"])
+            df = _normalize_archive_dates(df)
+        except Exception as e:
+            ui.notification_show(f"Could not read {f[0]['name']}: {e}", type="error", duration=5)
+            return
+        _pending_upload_df.set(df)
+        default_name = Path(f[0]["name"]).stem
+        ui.modal_show(
+            ui.modal(
+                ui.input_text("archive_upload_save_name", "Dataset name", value=default_name),
+                ui.input_text_area("archive_upload_save_desc", "Description (optional)",
+                                   value="", width="100%", rows=2),
+                title="Save to archive",
+                footer=ui.div(
+                    ui.input_action_button("btn_archive_upload_save_confirm", "Save",
+                                           class_="btn btn-primary me-2"),
+                    ui.modal_button("Cancel"),
+                ),
+                easy_close=True,
+            )
+        )
+
+    @reactive.effect
+    @reactive.event(input.btn_archive_upload_save_confirm)
+    def _on_archive_upload_save_confirm():
+        ui.modal_remove()
+        df = _pending_upload_df.get()
+        if df is None:
+            return
+        name = (input.archive_upload_save_name() or "").strip() or "My dataset"
+        desc = (input.archive_upload_save_desc() or "").strip()
+        records = session_archive.get().copy()
+        records.append({
+            "label":       name,
+            "save_date":   date.today().strftime("%Y-%m-%d"),
+            "description": desc or f"Uploaded dataset - {len(df)} trial(s).",
+            "df":          df,
+        })
+        session_archive.set(records)
+        _pending_upload_df.set(None)
+        if log_fn:
+            log_fn(f"Uploaded to archive: '{name}' ({len(df)} rows)", level="ok")
+        ui.notification_show(f"Saved '{name}' to archive.", type="message", duration=4)
+
     # ── Checking tab filters ─────────────────────────────────────────────────
 
-    @output(suspend_when_hidden=False)
-    @render.ui
-    def chk_compound_ui():
-        return make_filter_ui(active_data, "compound", "chk_compound", "Compound:")
-
-    @output(suspend_when_hidden=False)
-    @render.ui
-    def chk_indication_ui():
-        return make_filter_ui(active_data, "indication", "chk_indication", "Indication:")
-
-    @output(suspend_when_hidden=False)
-    @render.ui
-    def chk_phase_ui():
-        return make_filter_ui(active_data, "phases", "chk_phase", "Phase:")
+    register_trial_filters(output, "chk", active_data)
 
     # ── Checking tab output ──────────────────────────────────────────────────
 
@@ -668,15 +791,11 @@ def archive_server(input, output, session,
         diffs = _update_diffs.get()
         if diffs is None:
             return ui.p("No updates to review.", class_="text-muted p-4 text-center")
-        df = active_data()
+        df = display_data()
         if df is None:
             return ui.div()
 
-        df = filter_by_selections(df, input, [
-            ("compound",   "chk_compound"),
-            ("indication", "chk_indication"),
-            ("phases",     "chk_phase"),
-        ])
+        df = apply_trial_filters(df, input, "chk")
         sort_col = input.chk_sort_by() if input_exists(input, "chk_sort_by") else "start_date"
         if sort_col in df.columns:
             df = df.sort_values(sort_col, na_position="last")
@@ -691,32 +810,43 @@ def archive_server(input, output, session,
     def session_archive_cards():
         records = session_archive.get()
         if not records:
-            return ui.p(
-                "No records saved yet. After loading data, use 'Save to session' to store it here.",
-                class_="text-muted small fst-italic",
+            return ui.TagList(
+                ui.p(
+                    "No records saved yet. After loading data, use 'Save to session' to store it here.",
+                    class_="text-muted small fst-italic",
+                ),
+                ui.p(
+                    "If you upload a data set here, it will not do raw data-processing in this section.",
+                    class_="small text-muted fw-semibold",
+                ),
             )
         cards = []
         for i, rec in enumerate(records):
+            desc = rec.get("description", "")
+            label_block = [ui.span(rec.get("label", f"Record {i+1}"), class_="fw-semibold d-block")]
+            if desc:
+                label_block.append(ui.span(desc, class_="text-muted small"))
             cards.append(
                 ui.div(
                     ui.div(
                         ui.div(
-                            ui.span(rec.get("label", f"Record {i+1}"), class_="fw-semibold"),
-                        ),
-                        ui.div(
-                            ui.span(f"Saved: {rec.get('save_date', '')}", class_="text-muted small me-3"),
-                            ui.input_action_button(
-                                f"btn_load_session_{i}", "Load",
-                                class_="btn btn-sm btn-outline-dark",
+                            ui.div(*label_block, class_="me-3"),
+                            ui.div(
+                                ui.span(f"Saved: {rec.get('save_date', '')}", class_="text-muted small me-3"),
+                                ui.input_action_button(
+                                    f"btn_load_session_{i}", "Load",
+                                    class_="btn btn-sm btn-outline-dark",
+                                ),
+                                class_="d-flex align-items-center flex-shrink-0",
                             ),
-                            class_="d-flex align-items-center",
+                            class_="d-flex justify-content-between align-items-center",
                         ),
-                        class_="d-flex justify-content-between align-items-center",
+                        class_="card p-3 h-100",
                     ),
-                    class_="card p-3 mb-2",
+                    class_="col",
                 )
             )
-        return ui.div(*cards)
+        return ui.div(*cards, class_="row row-cols-1 row-cols-md-2 g-3")
 
     # ── Session archive load handlers ────────────────────────────────────────
 
@@ -737,6 +867,8 @@ def archive_server(input, output, session,
                         _source_label.set(r.get("label", ""))
                         archive_update_status.set({})
                         app_state.set("loaded")
+                        if loaded_session_index is not None:
+                            loaded_session_index.set(idx)
                         if log_fn:
                             label = r.get("label", "")
                             log_fn(f"Loaded session record: '{label}' ({len(df)} rows)", level="ok")
@@ -761,6 +893,8 @@ def archive_server(input, output, session,
                     _source_label.set(stub.get("compound", "curated"))
                     archive_update_status.set({})
                     app_state.set("loaded")
+                    if loaded_session_index is not None:
+                        loaded_session_index.set(None)
                     if log_fn:
                         compound = stub.get("compound", "curated")
                         log_fn(f"Loaded curated dataset: {compound} ({len(df)} rows)", level="ok")

@@ -1,33 +1,10 @@
 ### Now Live on:
 **https://posit-connect.am.lilly.com/content/703605bb-fc13-40fc-b0af-6cbe236d624d**
 
-## To Run It Locally
-
-1. Clone the repo
-   ```bash
-   git clone <repo-url>
-   cd ct_comp_viz
-   ```
-
-2. Create a virtual environment and install dependencies
-   ```bash
-   python -m venv .venv
-
-   # Windows
-   .venv\Scripts\activate
-   # macOS / Linux
-   source .venv/bin/activate
-
-   pip install -r requirements.txt
-   ```
-
-3. Run the app
-   ```bash
-   shiny run app.py
-   ```
-   Then open `http://127.0.0.1:8000` in your browser.
-
 ## Dev Notes
+
+`beta` branch:
+> - deploy testing and everything. will be removed once final version out. 
 
 `indication-rule` branch: 
 Changes from the initial version: 
@@ -55,5 +32,9 @@ Changes from the initial version:
 >     - drop post-hoc or secondary analysis papers;
 >     - rank by citation count, if not papers in main journals, keep 2 at maximum. 
 >
-> `archive` branch:
-> - add archive feature, still in development.
+
+`archive` branch:
+> - archive feature to view curated data set from server-side;
+> - check updates feature to compare saved ones with most-up-to-date ones from ct.gov;
+> - click NCT number to edit the specific trial based on user's needs;
+> - keep user saved data per session. 

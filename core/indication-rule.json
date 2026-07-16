@@ -194,7 +194,8 @@
       "ascvd",
       "atherosclerosis",
       "arteriosclerosis"
-    ]
+    ],
+    "pk_terms": ["pharmacokinetic", "pharmacokinetics"]
   },
   "overrides": [
     {
