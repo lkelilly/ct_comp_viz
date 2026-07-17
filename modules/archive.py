@@ -335,6 +335,7 @@ def archive_server(input, output, session,
                    session_archive, app_state, data_source,
                    api_data, upload_data, archive_update_status, active_data,
                    display_data=None, review_mode=None, loaded_session_index=None,
+                   is_curated_data=None,
                    log_fn=None):
 
     display_data = display_data if display_data is not None else active_data
@@ -869,6 +870,8 @@ def archive_server(input, output, session,
                         app_state.set("loaded")
                         if loaded_session_index is not None:
                             loaded_session_index.set(idx)
+                        if is_curated_data is not None:
+                            is_curated_data.set(False)
                         if log_fn:
                             label = r.get("label", "")
                             log_fn(f"Loaded session record: '{label}' ({len(df)} rows)", level="ok")
@@ -895,6 +898,8 @@ def archive_server(input, output, session,
                     app_state.set("loaded")
                     if loaded_session_index is not None:
                         loaded_session_index.set(None)
+                    if is_curated_data is not None:
+                        is_curated_data.set(True)
                     if log_fn:
                         compound = stub.get("compound", "curated")
                         log_fn(f"Loaded curated dataset: {compound} ({len(df)} rows)", level="ok")

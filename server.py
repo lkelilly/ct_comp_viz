@@ -116,6 +116,9 @@ def server(input, output, session):
     # if the active data isn't tied to a session record, e.g. fresh fetch/upload
     # or a curated dataset) — used to rewrite that record when edits are saved.
     loaded_session_index = reactive.Value(None)
+    # True only when the active data came from a curated (read-only) dataset —
+    # Edit Trials is hidden in that case since edits can't be persisted anywhere.
+    is_curated_data = reactive.Value(False)
 
     @reactive.calc
     def active_data():
@@ -175,7 +178,7 @@ def server(input, output, session):
             capped  = fetched < total
             _log(
                 f"Retrieved {fetched:,} studies"
-                + (f" (of {total:,} total — capped by max_results)" if capped
+                + (f" (of {total:,} total - capped by max_results)" if capped
                    else f" of {total:,} total")
                 + f"  [{elapsed}s]",
                 level="ok",
@@ -680,6 +683,7 @@ def server(input, output, session):
         process_fn=process_raw_ctgov,
         fetch_pubs_fn=add_publications,
         loaded_session_index=loaded_session_index,
+        is_curated_data=is_curated_data,
     )
 
     trial_info_server(input, output, session, active_data=active_data,
@@ -687,6 +691,7 @@ def server(input, output, session):
                       edited_ncts=edited_ncts,
                       session_archive=session_archive,
                       loaded_session_index=loaded_session_index,
+                      is_curated=is_curated_data,
                       api_data=api_data, upload_data=upload_data, log_fn=_log)
     trial_summary_server(input, output, session, active_data=active_data)
     viz_server(input, output, session, active_data=frozen_data)
@@ -702,5 +707,6 @@ def server(input, output, session):
         display_data=frozen_data,
         review_mode=chk_review_mode,
         loaded_session_index=loaded_session_index,
+        is_curated_data=is_curated_data,
         log_fn=_log,
     )

@@ -57,7 +57,7 @@ _TI_LONG_FIELDS = set(TRUNCATE_COLS)
 # The NCT number is the row key used for matching, so it is shown read-only.
 _TI_READONLY_FIELDS = {"nct_number"}
 # Fields computed by this app (derived), plus Brief Summary (manually cleaned-up
-# free text) — these are the only ones exposed as editable in the edit modal.
+# free text) - these are the only ones exposed as editable in the edit modal.
 _TI_EDITABLE_FIELDS = {
     "compound", "indication", "acronym",
     "simplified_primary_outcome", "simplified_secondary_outcome",
@@ -119,6 +119,7 @@ def trial_info_ui():
 def trial_info_server(input, output, session, active_data, display_data=None,
                       edit_mode=None, edited_ncts=None,
                       session_archive=None, loaded_session_index=None,
+                      is_curated=None,
                       api_data=None, upload_data=None, log_fn=None):
 
     register_trial_filters(output, "ti", active_data)
@@ -154,9 +155,17 @@ def trial_info_server(input, output, session, active_data, display_data=None,
                                    f"with {len(df)} row(s) of edits", level="ok")
             _own_edits.set({})
 
+    @reactive.effect
+    def _exit_edit_on_curated():
+        if is_curated is not None and is_curated.get() and _ti_edit_mode.get():
+            _ti_edit_mode.set(False)
+            _own_edits.set({})
+
     @output(suspend_when_hidden=False)
     @render.ui
     def ti_edit_btn_ui():
+        if is_curated is not None and is_curated.get():
+            return ui.div()
         editing = _ti_edit_mode.get()
         return ui.input_action_button(
             "ti_toggle_edit",
@@ -169,6 +178,15 @@ def trial_info_server(input, output, session, active_data, display_data=None,
     def ti_edit_controls():
         if not _ti_edit_mode.get():
             return ui.div()
+        if loaded_session_index is not None and loaded_session_index.get() is not None:
+            line3 = ui.span(
+                "3. Click ", ui.tags.code("Save My Edits"),
+                " will also save your changes to this dataset's saved session record.",
+            )
+        else:
+            line3 = ui.span(
+                "3. Click ", ui.tags.code("Save to Archive"), " to save this data set to archive data.",
+            )
         return ui.div(
             dismissible_alert(
                 ui.span(
@@ -176,7 +194,7 @@ def trial_info_server(input, output, session, active_data, display_data=None,
                     ui.br(),
                     "2. Click ", ui.tags.code("Save My Edits"), " to re-load visualization.",
                     ui.br(),
-                    "3. Click ", ui.tags.code("Save to Archive"), " to save this data set to archive data.",
+                    line3,
                 ),
                 level="primary",
             ),
@@ -336,7 +354,7 @@ def trial_info_server(input, output, session, active_data, display_data=None,
                 body_items.append(
                     ui.div(
                         ui.span(label, class_="fw-semibold small d-block"),
-                        ui.span(value or "—", class_="text-muted small"),
+                        ui.span(value or "-", class_="text-muted small"),
                         class_="mb-2",
                     )
                 )
