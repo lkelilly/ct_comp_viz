@@ -538,6 +538,18 @@ def studies_to_dataframe(studies: list) -> pd.DataFrame:
     return df[col_order]
 
 
+def concat_frames(frames: list) -> pd.DataFrame:
+    """
+    Stack per-compound DataFrames into one table (no key-based join — every
+    frame already shares the same fixed column set from studies_to_dataframe).
+    Rows are kept as-is, including duplicate NCT numbers across frames.
+    """
+    frames = [f for f in frames if f is not None and not f.empty]
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
 def read_uploaded_csv(path: str) -> pd.DataFrame:
     """Read a user-uploaded CSV and normalise column names."""
     df = pd.read_csv(path, header=0)

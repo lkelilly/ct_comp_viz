@@ -394,6 +394,23 @@ def query_server(input, output, session,
         if other_id:
             ui.update_checkbox("include_other_id_land", value=True)
             ui.update_text("query_other_id_land", value=other_id)
+
+        ui.update_radio_buttons("filter_status", selected="|".join(params.get("filter_status") or []))
+        ui.update_checkbox_group("filter_phase",      selected=params.get("filter_phase")      or [])
+        ui.update_checkbox_group("filter_study_type", selected=params.get("filter_study_type") or [])
+        ui.update_checkbox_group("filter_funder",     selected=params.get("filter_funder")     or [])
+        ui.update_select("filter_sex", selected=params.get("filter_sex", "All"))
+        ui.update_checkbox("filter_healthy", value=params.get("filter_healthy", False))
+        ui.update_radio_buttons("filter_results", selected=params.get("filter_results", "Any"))
+        ui.update_numeric("filter_age_min", value=params.get("filter_age_min"))
+        ui.update_numeric("filter_age_max", value=params.get("filter_age_max"))
+        ui.update_text("filter_start_from",      value=params.get("filter_start_from",      ""))
+        ui.update_text("filter_start_to",        value=params.get("filter_start_to",        ""))
+        ui.update_text("filter_completion_from", value=params.get("filter_completion_from", ""))
+        ui.update_text("filter_completion_to",   value=params.get("filter_completion_to",   ""))
+        ui.update_select("sort_order", selected=params.get("sort_order", "LastUpdatePostDate:desc"))
+        ui.update_numeric("max_results", value=params.get("max_results", 500))
+
         ui.update_action_button("btn_run", label="Re-run Query")
 
     @reactive.effect

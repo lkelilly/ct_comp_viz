@@ -42,6 +42,7 @@ async def fetch_studies(
     sort_order="LastUpdatePostDate:desc",
     max_results=500,
     progress_callback=None,
+    retry_callback=None,
 ):
     """
     Async wrapper — runs the blocking fetch in a thread so Shiny stays responsive.
@@ -61,28 +62,38 @@ async def fetch_studies(
         sort_order, max_results,
     )
 
-    # Wrap the sync paginator so we can call the async progress_callback
-    # from inside a thread. We collect (fetched, total) tuples in a queue
-    # and drain them on the event loop side after each page.
+    # Wrap the sync paginator so we can call the async progress_callback /
+    # retry_callback from inside a thread. We collect events in queues and
+    # drain them on the event loop side after each page / retry.
     import queue
     progress_q = queue.Queue()
+    retry_q    = queue.Queue()
 
     def _sync_progress(fetched, total):
         progress_q.put((fetched, total))
 
+    def _sync_on_retry(attempt, max_attempts, reason):
+        retry_q.put((attempt, max_attempts, reason))
+
     def _blocking_fetch():
-        return _paginate(params, max_results, _sync_progress)
+        return _paginate(params, max_results, _sync_progress, _sync_on_retry)
 
     # Run the blocking call in a thread pool
     result_future = loop.run_in_executor(None, _blocking_fetch)
 
-    error = None
-    while True:
-        # Drain any progress updates that arrived
+    async def _drain_queues():
         while not progress_q.empty():
             fetched, tot = progress_q.get_nowait()
             if progress_callback:
                 await progress_callback(fetched, tot)
+        while not retry_q.empty():
+            attempt, max_attempts, reason = retry_q.get_nowait()
+            if retry_callback:
+                await retry_callback(attempt, max_attempts, reason)
+
+    error = None
+    while True:
+        await _drain_queues()
 
         # Check if the thread finished
         if result_future.done():
@@ -94,11 +105,8 @@ async def fetch_studies(
 
         await asyncio.sleep(0.3)   # yield to event loop; check again soon
 
-    # Final progress drain
-    while not progress_q.empty():
-        fetched, tot = progress_q.get_nowait()
-        if progress_callback:
-            await progress_callback(fetched, tot)
+    # Final drain
+    await _drain_queues()
 
     if error:
         raise error
@@ -108,7 +116,7 @@ async def fetch_studies(
 
 # ── Sync internals ────────────────────────────────────────────────────────────
 
-def _paginate(params, max_results, progress_cb):
+def _paginate(params, max_results, progress_cb, on_retry=None):
     studies     = []
     total_count = None
     page_token  = None
@@ -117,7 +125,7 @@ def _paginate(params, max_results, progress_cb):
         if page_token:
             params = dict(params, pageToken=page_token)
 
-        data = _get(params)
+        data = _get(params, on_retry=on_retry)
 
         if total_count is None:
             total_count = data.get("totalCount", 0)
@@ -141,18 +149,33 @@ def _paginate(params, max_results, progress_cb):
     return studies, total_count
 
 
-def _get(params):
-    try:
-        resp = _session.get(BASE_URL, params=params, timeout=30)
-    except requests.exceptions.RequestException as e:
-        raise CTGovNetworkError(f"Network error: {e}") from e
+def _get(params, on_retry=None, max_retries=2):
+    attempt = 0
+    while True:
+        try:
+            resp = _session.get(BASE_URL, params=params, timeout=30)
+        except requests.exceptions.RequestException as e:
+            if attempt >= max_retries:
+                raise CTGovNetworkError(f"Network error: {e}") from e
+            if on_retry:
+                on_retry(attempt + 1, max_retries, str(e))
+            time.sleep(2 ** attempt)
+            attempt += 1
+            continue
 
-    if resp.status_code != 200:
-        raise CTGovAPIError(
-            f"CT.gov API returned HTTP {resp.status_code}: {resp.text[:300]}"
-        )
+        if resp.status_code >= 500 and attempt < max_retries:
+            if on_retry:
+                on_retry(attempt + 1, max_retries, f"HTTP {resp.status_code}")
+            time.sleep(2 ** attempt)
+            attempt += 1
+            continue
 
-    return resp.json()
+        if resp.status_code != 200:
+            raise CTGovAPIError(
+                f"CT.gov API returned HTTP {resp.status_code}: {resp.text[:300]}"
+            )
+
+        return resp.json()
 
 
 # ── Parameter builder ─────────────────────────────────────────────────────────
@@ -170,6 +193,41 @@ def _quote_phrase(text):
     if not text or " " not in text or _ESSIE_SPECIAL_RE.search(text):
         return text
     return f'"{text}"'
+
+
+# Only these mark query_intr as "advanced Essie syntax" the user wrote on
+# purpose — in that case we leave it as one opaque term rather than splitting
+# on OR (mirrors the untouched-passthrough branch of _quote_phrase).
+_ESSIE_ADVANCED_RE = re.compile(r'["\[\]()]|\b(?:AND|NOT)\b', re.IGNORECASE)
+
+
+def split_compound_terms(query_intr, query_other_id):
+    """
+    Return the individual compound terms implied by the Intervention box and
+    the alternative-compound-name box, so callers can fetch each one
+    separately instead of sending one combined OR query to CT.gov.
+
+    - query_other_id is split on "," or "|" (same delimiters _build_params
+      already treats as OR separators).
+    - query_intr is split on a bare "OR" only if it contains no other Essie
+      syntax (quotes/brackets/AND/NOT); otherwise it's kept as one opaque
+      term so power-user raw-Essie queries aren't broken apart.
+
+    Returns a list[str] of stripped, unquoted terms (possibly empty, possibly
+    length 1 — callers should treat len() <= 1 as "no split needed").
+    """
+    intr_terms = []
+    if query_intr and query_intr.strip():
+        text = query_intr.strip()
+        if _ESSIE_ADVANCED_RE.search(text):
+            intr_terms = [text]
+        else:
+            intr_terms = [t.strip() for t in re.split(r'\bOR\b', text, flags=re.IGNORECASE) if t.strip()]
+
+    alt_terms = [o.strip() for o in re.split(r'[,|]+', query_other_id) if o.strip()] \
+        if (query_other_id and query_other_id.strip()) else []
+
+    return intr_terms + alt_terms
 
 
 def _add_adv_filter(adv, items, area_field):

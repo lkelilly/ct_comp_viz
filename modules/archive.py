@@ -813,11 +813,12 @@ def archive_server(input, output, session,
         if not records:
             return ui.TagList(
                 ui.p(
-                    "No records saved yet. After loading data, use 'Save to session' to store it here.",
+                    "No records saved yet. After loading data, use 'Save to session' to store it here. "
+                    "Or upload your own data set here in this session to archive.",
                     class_="text-muted small fst-italic",
                 ),
                 ui.p(
-                    "If you upload a data set here, it will not do raw data-processing in this section.",
+                    "NOTE: If you upload a data set here, it will not do raw data-processing in this section.",
                     class_="small text-muted fw-semibold",
                 ),
             )

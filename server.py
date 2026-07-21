@@ -19,9 +19,9 @@ from datetime import datetime
 
 from shiny import reactive, render, ui
 
-from core.ct_api     import fetch_studies, CTGovAPIError, CTGovNetworkError
+from core.ct_api     import fetch_studies, split_compound_terms, CTGovAPIError, CTGovNetworkError
 from core.utils      import (
-    studies_to_dataframe, read_uploaded_csv, process_raw_ctgov,
+    studies_to_dataframe, read_uploaded_csv, process_raw_ctgov, concat_frames,
 )
 from core.pubmed_api import add_publications
 
@@ -167,48 +167,99 @@ def server(input, output, session):
         api_error.set(None)
 
         _log(f"Query: {_summarize_kwargs(kwargs)}")
-        _log(f"Fetching from ClinicalTrials.gov  (max {kwargs.get('max_results', 500)} results)…")
+
+        terms = split_compound_terms(
+            kwargs.get("query_intr") or "", kwargs.get("query_other_id") or ""
+        )
+
+        if len(terms) <= 1:
+            with ui.Progress(min=0, max=1) as p:
+                p.set(0, message="Fetching from ClinicalTrials.gov", detail="…")
+                df = await _fetch_one(kwargs, progress=p)
+                if df is None:
+                    return False
+                p.set(1)
+        else:
+            _log(f"Fetching {len(terms)} compounds from ClinicalTrials.gov  (max {kwargs.get('max_results', 500)} results each)…")
+            frames = []
+            failed = []
+            with ui.Progress(min=0, max=len(terms)) as p:
+                for i, term in enumerate(terms, start=1):
+                    p.set(i - 1, message="Fetching from ClinicalTrials.gov",
+                          detail=f"{term} ({i}/{len(terms)})")
+                    _log(f"Fetching compound {i}/{len(terms)}: {term}…")
+                    term_kwargs = dict(kwargs, query_intr=term, query_other_id="")
+                    term_df = await _fetch_one(term_kwargs, quiet=True, progress=p,
+                                                label=term, progress_detail=f"{term} ({i}/{len(terms)})")
+                    if term_df is None:
+                        failed.append(term)
+                        continue
+                    frames.append(term_df)
+                    _log(f"  '{term}': {len(term_df):,} rows", level="ok")
+                p.set(len(terms))
+
+            df = concat_frames(frames)
+            if df.empty:
+                _log("All compound fetches failed - no results", level="error")
+                return False
+            summary = f"Combined {len(frames)} compound(s) -> {len(df):,} total rows"
+            if failed:
+                summary += f"; {len(failed)} failed: {', '.join(failed)}"
+            _log(summary, level="ok" if not failed else "warn")
+            api_error.set(None)
+
+        with ui.Progress(min=0, max=2) as p:
+            p.set(0, message="Processing data", detail="Fetching publications from PubMed...")
+            await asyncio.sleep(0)
+            df = await asyncio.to_thread(add_publications, df)
+            p.set(2, message="Processing data", detail="Done")
+            await asyncio.sleep(0)
+
+        _log(f"Publication adding complete", level="ok")
+
+        api_data.set(df)
+        upload_data.set(None)
+        return True
+
+    async def _fetch_one(kwargs, quiet=False, progress=None, label=None, progress_detail=None):
+        """Fetch + process a single (non-OR) query. Returns a processed
+        DataFrame, or None if the fetch failed (error is logged either way)."""
+        if not quiet:
+            _log(f"Fetching from ClinicalTrials.gov  (max {kwargs.get('max_results', 500)} results)…")
 
         t0 = time.time()
 
+        async def _on_retry(attempt, max_attempts, reason):
+            msg = f"{label or 'Fetch'}: retrying after {reason} (attempt {attempt}/{max_attempts})…"
+            _log(msg, level="warn")
+            if progress:
+                progress.set(message="Fetching from ClinicalTrials.gov", detail=msg)
+
         try:
-            studies, total = await fetch_studies(**kwargs)
+            studies, total = await fetch_studies(**kwargs, retry_callback=_on_retry)
+            if progress and progress_detail:
+                progress.set(message="Fetching from ClinicalTrials.gov", detail=progress_detail)
             elapsed = round(time.time() - t0, 1)
             fetched = len(studies)
             capped  = fetched < total
-            _log(
-                f"Retrieved {fetched:,} studies"
-                + (f" (of {total:,} total - capped by max_results)" if capped
-                   else f" of {total:,} total")
-                + f"  [{elapsed}s]",
-                level="ok",
-            )
-            df = studies_to_dataframe(studies)
-            _log(f"Processed into DataFrame: {len(df)} rows x {len(df.columns)} columns")
-
-            with ui.Progress(min=0, max=5) as p:
-                p.set(0, message="Processing data", detail="Standardizing dates...")
-                await asyncio.sleep(0)
-                p.set(1, message="Processing data", detail="Mapping indications...")
-                await asyncio.sleep(0)
-                p.set(2, message="Processing data", detail="Adding compound information...")
-                df = await asyncio.to_thread(
-                    process_raw_ctgov, df,
-                    query_intr=kwargs.get("query_intr") or "",
-                    query_other_id=kwargs.get("query_other_id") or "",
+            if not quiet:
+                _log(
+                    f"Retrieved {fetched:,} studies"
+                    + (f" (of {total:,} total - capped by max_results)" if capped
+                       else f" of {total:,} total")
+                    + f"  [{elapsed}s]",
+                    level="ok",
                 )
-                p.set(3, message="Processing data", detail="Fetching publications from PubMed...")
-                await asyncio.sleep(0)
-                df = await asyncio.to_thread(add_publications, df)
-                p.set(5, message="Processing data", detail="Done")
-                await asyncio.sleep(0)
+            df = studies_to_dataframe(studies)
+            if not quiet:
+                _log(f"Processed into DataFrame: {len(df)} rows x {len(df.columns)} columns")
 
-            _log(f"Processed DataFrame: indication + compound columns added", level="ok")
-            _log(f"Publication adding complete", level="ok")
-
-            api_data.set(df)
-            upload_data.set(None)
-            return True
+            df = await asyncio.to_thread(
+                process_raw_ctgov, df,
+                query_intr=kwargs.get("query_intr") or "",
+                query_other_id=kwargs.get("query_other_id") or "",
+            )
+            return df
         except CTGovAPIError as e:
             _log(f"API error: {e}", level="error")
             api_error.set(str(e))
@@ -219,7 +270,8 @@ def server(input, output, session):
             _log(f"Unexpected error: {e}", level="error")
             api_error.set(str(e))
 
-        return False
+        return None
+
 
     # ── Mode selector handlers ────────────────────────────────────────────────
 

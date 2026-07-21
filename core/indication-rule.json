@@ -61,9 +61,9 @@
       "T2D",
       "T2DM",
       "Diabetes, Type 2",
+      "Diabetes Type 2",
       "Diabetes Mellitus, Type 2",
-      "Diabetes Mellitus",
-      "Diabetes"
+      "Diabetes Mellitus"
     ],
     "Type 1 Diabetes": [
       "Type 1 Diabetes",
@@ -71,6 +71,7 @@
       "T1D",
       "T1DM",
       "Diabetes, Type 1",
+      "Diabetes Type 1"
       "Diabetes Mellitus, Type 1",
       "Juvenile Diabetes"
     ],
