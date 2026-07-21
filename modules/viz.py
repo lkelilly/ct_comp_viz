@@ -126,7 +126,7 @@ def viz_server(input, output, session, active_data):
 
     # ── Dynamic filter widgets ────────────────────────────────────────────────
 
-    register_trial_filters(output, "viz", active_data)
+    register_trial_filters(output, input, session, "viz", active_data)
 
     # ── Filtered + sorted data ────────────────────────────────────────────────
 

@@ -122,7 +122,7 @@ def trial_info_server(input, output, session, active_data, display_data=None,
                       is_curated=None,
                       api_data=None, upload_data=None, log_fn=None):
 
-    register_trial_filters(output, "ti", active_data)
+    register_trial_filters(output, input, session, "ti", active_data)
 
     display_data = display_data if display_data is not None else active_data
 
@@ -166,6 +166,11 @@ def trial_info_server(input, output, session, active_data, display_data=None,
     def ti_edit_btn_ui():
         if is_curated is not None and is_curated.get():
             return ui.div()
+        try:
+            if input.inner_tabs() == "Visualization":
+                return ui.div()
+        except Exception:
+            pass
         editing = _ti_edit_mode.get()
         return ui.input_action_button(
             "ti_toggle_edit",
@@ -263,6 +268,19 @@ def trial_info_server(input, output, session, active_data, display_data=None,
                 ),
             })
 
+        results_label = TRIAL_TABLE_LABELS.get("study_results", "Results")
+        if results_label in display_cols and "nct_number" in df.columns:
+            # Build results link HTML directly in the DataFrame
+            def _results_cell(row):
+                val = str(row.get("study_results", "")).strip()
+                if val.lower() == "yes":
+                    nct = row.get("nct_number", "")
+                    return f'<a href="https://clinicaltrials.gov/study/{nct}?tab=results" target="_blank">Results Tab</a>'
+                if val.startswith("http"):
+                    return f'<a href="{val}" target="_blank">Results Tab</a>'
+                return "No"
+            df_display[results_label] = df.apply(_results_cell, axis=1)
+
         if _ti_edit_mode.get():
             nct_label = TRIAL_TABLE_LABELS.get("nct_number", "NCT Number")
             if nct_label in display_cols:
@@ -305,7 +323,7 @@ def trial_info_server(input, output, session, active_data, display_data=None,
         if col_defs:
             dt_kwargs["columnDefs"] = col_defs
 
-        table_html = to_html_datatable(df_display, **dt_kwargs)
+        table_html = to_html_datatable(df_display, allow_html=True, **dt_kwargs)
         return ui.HTML(table_html)
 
     # ── Edit modal: open on NCT click ────────────────────────────────────────
@@ -361,8 +379,16 @@ def trial_info_server(input, output, session, active_data, display_data=None,
 
         ui.modal_show(
             ui.modal(
+                ui.div(
+                    ui.tags.h4(f"Edit — {nct}", class_="modal-title"),
+                    ui.tags.button(
+                        type="button", class_="btn-close",
+                        **{"data-bs-dismiss": "modal", "aria-label": "Close"},
+                    ),
+                    class_="modal-header",
+                ),
                 *body_items,
-                title=f"Edit — {nct}",
+                title=None,
                 footer=ui.div(
                     ui.input_action_button(
                         "btn_ti_edit_save", "Save",

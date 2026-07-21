@@ -322,3 +322,47 @@ def _build_params(
 def _add_text(params, key, value):
     if value and isinstance(value, str) and value.strip():
         params[key] = _quote_phrase(value.strip())
+
+
+# ── Results status lookup ────────────────────────────────────────────────────
+
+def fetch_results_status(nct_ids):
+    """Query CT.gov for a list of NCT IDs and return {nct_id: bool} indicating
+    whether each study has posted results. Batches requests in groups of 50
+    (CT.gov query.id limit). Runs synchronously — call from a thread if needed."""
+    if not nct_ids:
+        return {}
+
+    results = {}
+    batch_size = 50
+
+    for start in range(0, len(nct_ids), batch_size):
+        batch = nct_ids[start:start + batch_size]
+        # CT.gov query.id accepts space-separated NCT IDs (OR semantics)
+        id_query = " OR ".join(batch)
+        params = {
+            "format": "json",
+            "query.id": id_query,
+            "pageSize": len(batch),
+            "fields": "NCTId,HasResults",
+            "countTotal": "true",
+        }
+
+        try:
+            data = _get(params)
+            for study in data.get("studies", []):
+                nct = (study.get("protocolSection", {})
+                       .get("identificationModule", {})
+                       .get("nctId", ""))
+                has_results = study.get("hasResults", False)
+                if nct:
+                    results[nct] = has_results
+        except Exception:
+            # On failure, mark batch as unknown (no results)
+            for nct in batch:
+                results.setdefault(nct, False)
+
+        if start + batch_size < len(nct_ids):
+            time.sleep(0.2)
+
+    return results

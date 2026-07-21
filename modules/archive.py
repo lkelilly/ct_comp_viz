@@ -82,6 +82,9 @@ def _norm(val, field):
     if val is None or (isinstance(val, float) and math.isnan(val)):
         return None
     s = str(val).strip().lower()
+    # Normalize study_results: a URL means "yes" (has results)
+    if field == "study_results" and s.startswith("http"):
+        return "yes"
     s = re.sub(r'\s*\|\s*', '|', s)
     return s or None
 
@@ -186,7 +189,15 @@ def _build_diff_datatable(df, diffs_by_nct, pending):
             elif col in row_diffs and is_changed:
                 diff = row_diffs[col]
                 old_html = _trunc_span(arch_val, col)
-                new_html = _trunc_span(diff["current_value"] or "", col)
+                new_val = diff["current_value"] or ""
+                # Special case: study_results "Yes" renders as a results link
+                if col == "study_results" and str(new_val).lower() == "yes":
+                    new_html = (
+                        f'<a href="https://clinicaltrials.gov/study/{_e(nct)}?tab=results"'
+                        f' target="_blank">Results Tab</a>'
+                    )
+                else:
+                    new_html = _trunc_span(new_val, col)
                 out[col] = (
                     f'<div style="border-left:3px solid #f0c040;padding-left:5px;background:#fffde7">'
                     f'<span style="color:#aaa;font-size:.82em;display:block">{old_html}</span>'
@@ -194,7 +205,18 @@ def _build_diff_datatable(df, diffs_by_nct, pending):
                     f'</div>'
                 )
             else:
-                out[col] = _trunc_span(arch_val, col)
+                # Non-diff: show results link if study_results is "Yes" or a URL
+                if col == "study_results":
+                    sv = str(arch_val).strip().lower()
+                    if sv == "yes" or sv.startswith("http"):
+                        out[col] = (
+                            f'<a href="https://clinicaltrials.gov/study/{_e(nct)}?tab=results"'
+                            f' target="_blank">Results Tab</a>'
+                        )
+                    else:
+                        out[col] = "No"
+                else:
+                    out[col] = _trunc_span(arch_val, col)
 
         display_rows.append(out)
 
@@ -282,49 +304,30 @@ def archive_ui():
             ),
             class_="mb-3",
         ),
-        ui.h6("Curated datasets", class_="fw-semibold mb-3"),
         ui.div(
-            *[
-                ui.div(
-                    ui.div(
-                        ui.div(
-                            ui.span(stub["compound"], class_="fw-semibold d-block"),
-                            ui.span(stub["indication"], class_="text-muted small"),
-                            class_="mb-2",
-                        ),
-                        ui.p(stub.get("description", ""), class_="small text-muted mb-3"),
-                        ui.div(
-                            ui.span(f"Updated: {stub['save_date']}", class_="text-muted small"),
-                            ui.input_action_button(
-                                f"btn_load_curated_{i}", "Load",
-                                class_="btn btn-sm btn-outline-dark",
-                            ),
-                            class_="d-flex justify-content-between align-items-center",
-                        ),
-                        class_="card p-3 h-100",
-                    ),
-                    class_="col",
-                )
-                for i, stub in enumerate(_CURATED_STUBS)
-            ],
-            class_="row row-cols-1 row-cols-md-2 g-3 mb-3",
-        ),
-        ui.hr(class_="my-3"),
-        ui.div(
-            ui.input_file("archive_upload_file", None, accept=".csv", multiple=False),
-            style="display:none;",
-        ),
-        ui.div(
-            ui.h6("Saved in this session", class_="fw-semibold mb-0"),
-            ui.tags.button(
-                "Upload Data to Archive",
-                class_="btn btn-sm btn-outline-dark",
-                onclick="document.getElementById('archive_upload_file').click();",
-                type="button",
+            # Column 1: Curated datasets
+            ui.div(
+                ui.h6("Curated datasets", class_="fw-semibold mb-1"),
+                ui.tags.small(
+                    "Click a group to expand and select a dataset, or search by compound name above.",
+                    class_="d-block text-muted mb-3",
+                ),
+                ui.output_ui("curated_datasets_ui"),
+                class_="col-md-6",
             ),
-            class_="d-flex justify-content-between align-items-center mb-2",
+            # Column 2: Saved in this session
+            ui.div(
+                ui.div(
+                    ui.h6("Saved in this session", class_="fw-semibold mb-0"),
+                    ui.input_file("archive_upload_file", None, accept=".csv",
+                                  button_label="Choose CSV", multiple=False),
+                    class_="mb-2",
+                ),
+                ui.output_ui("session_archive_cards"),
+                class_="col-md-6",
+            ),
+            class_="row",
         ),
-        ui.output_ui("session_archive_cards"),
         class_="p-3",
     )
 
@@ -782,7 +785,7 @@ def archive_server(input, output, session,
 
     # ── Checking tab filters ─────────────────────────────────────────────────
 
-    register_trial_filters(output, "chk", active_data)
+    register_trial_filters(output, input, session, "chk", active_data)
 
     # ── Checking tab output ──────────────────────────────────────────────────
 
@@ -845,10 +848,10 @@ def archive_server(input, output, session,
                         ),
                         class_="card p-3 h-100",
                     ),
-                    class_="col",
+                    class_="mb-3",
                 )
             )
-        return ui.div(*cards, class_="row row-cols-1 row-cols-md-2 g-3")
+        return ui.div(*cards)
 
     # ── Session archive load handlers ────────────────────────────────────────
 
@@ -878,6 +881,63 @@ def archive_server(input, output, session,
                             log_fn(f"Loaded session record: '{label}' ({len(df)} rows)", level="ok")
             _make_handler(i)
 
+    # ── Curated datasets accordion (dynamic, filtered by search) ───────────
+
+    @output
+    @render.ui
+    def curated_datasets_ui():
+        search = ""
+        if input_exists(input, "archive_filter"):
+            search = (input.archive_filter() or "").strip().lower()
+
+        # Filter stubs by compound_list match
+        filtered = []
+        for i, stub in enumerate(_CURATED_STUBS):
+            compounds = stub.get("compound_list", [])
+            if search:
+                if not any(search in c.lower() for c in compounds):
+                    continue
+            filtered.append((i, stub))
+
+        if not filtered:
+            return ui.p("No matching datasets.", class_="text-muted small fst-italic")
+
+        # Group by "group" field
+        grouped = {}
+        for i, stub in filtered:
+            g = stub.get("group", "Other")
+            grouped.setdefault(g, []).append((i, stub))
+
+        # Build accordion panels
+        panels = []
+        for group_name, items in grouped.items():
+            cards = []
+            for i, stub in items:
+                compounds_str = ", ".join(stub.get("compound_list", []))
+                cards.append(
+                    ui.div(
+                        ui.div(
+                            ui.span(stub.get("title", ""), class_="fw-semibold d-block"),
+                            ui.span(compounds_str, class_="text-muted small"),
+                            class_="mb-2",
+                        ),
+                        ui.div(
+                            ui.span(f"Updated: {stub.get('save_date', '')}", class_="text-muted small"),
+                            ui.input_action_button(
+                                f"btn_load_curated_{i}", "Load",
+                                class_="btn btn-sm btn-outline-dark",
+                            ),
+                            class_="d-flex justify-content-between align-items-center",
+                        ),
+                        class_="card p-3 mb-2",
+                    )
+                )
+            panels.append(ui.accordion_panel(group_name, *cards))
+
+        # When searching, expand all groups so matches are visible
+        open_state = True if search else False
+        return ui.accordion(*panels, id="curated_accordion", open=open_state)
+
     # ── Curated card load handlers ───────────────────────────────────────────
 
     for i in range(len(_CURATED_STUBS)):
@@ -894,7 +954,7 @@ def archive_server(input, output, session,
                     api_data.set(None)
                     upload_data.set(df)
                     data_source.set(None)
-                    _source_label.set(stub.get("compound", "curated"))
+                    _source_label.set(stub.get("title", "curated"))
                     archive_update_status.set({})
                     app_state.set("loaded")
                     if loaded_session_index is not None:
@@ -902,8 +962,8 @@ def archive_server(input, output, session,
                     if is_curated_data is not None:
                         is_curated_data.set(True)
                     if log_fn:
-                        compound = stub.get("compound", "curated")
-                        log_fn(f"Loaded curated dataset: {compound} ({len(df)} rows)", level="ok")
+                        title = stub.get("title", "curated")
+                        log_fn(f"Loaded curated dataset: {title} ({len(df)} rows)", level="ok")
                 except Exception as e:
                     ui.notification_show(
                         f"Could not load dataset: {e}",

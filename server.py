@@ -48,6 +48,16 @@ def _prep_download_df(df):
             out = out.drop(columns=[raw_col])
         else:
             out[col] = out[col].dt.strftime("%Y-%m-%d").fillna("")
+
+    # Convert study_results "Yes" to full URL, leave "No" as-is
+    if "study_results" in out.columns and "nct_number" in out.columns:
+        out["study_results"] = out.apply(
+            lambda r: f"https://clinicaltrials.gov/study/{r['nct_number']}?tab=results"
+            if str(r.get("study_results", "")).lower() == "yes"
+            else "No",
+            axis=1,
+        )
+
     return out
 
 

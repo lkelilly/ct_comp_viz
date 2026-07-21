@@ -1,9 +1,37 @@
 [
   {
-    "compound":    "test",
-    "indication":  "indication placeholder, or anything else",
-    "save_date":   "2025-01",
-    "description": "Data set TZP_OFG_GGG_Sema_Cagrisema_29Jan2025",
-    "path":        "data/test_data.csv"
+    "group":         "Anti-Inflammation",
+    "title":         "ziltivekimab + clazakizumab + pacibekitug Ph1-3",
+    "compound_list": ["ziltivekimab", "clazakizumab", "pacibekitug"],
+    "save_date":     "2026-07-16",
+    "path":          "data/anti-inflammation/ziltivekimab clazakizumab pacibekitug 16Jul2026.csv"
+  },
+  {
+    "group":         "GLP1",
+    "title":         "CagriSema Ph1-3",
+    "compound_list": ["CagriSema"],
+    "save_date":     "2026-07-16",
+    "path":          "data/GLP1/CagriSema 16Jul2026.csv"
+  },
+  {
+    "group":         "GLP1",
+    "title":         "Orforglipron Ph1-3",
+    "compound_list": ["Orforglipron"],
+    "save_date":     "2026-07-16",
+    "path":          "data/GLP1/Orforglipron 16Jul2026.csv"
+  },
+  {
+    "group":         "GLP1",
+    "title":         "Retatrutide Ph1-3",
+    "compound_list": ["Retatrutide"],
+    "save_date":     "2026-07-16",
+    "path":          "data/GLP1/Retatrutide 16Jul2026.csv"
+  },
+  {
+    "group":         "GLP1",
+    "title":         "Tirzepatide Ph3 & Ph4",
+    "compound_list": ["Tirzepatide"],
+    "save_date":     "2026-07-16",
+    "path":          "data/GLP1/Tirzepatide ph3 and 4 16Jul2026.csv"
   }
 ]

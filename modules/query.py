@@ -16,6 +16,7 @@ import asyncio
 from shiny import reactive, render, ui
 
 from core.utils import build_filter_kwargs
+from core.ct_api import fetch_results_status
 
 
 # ── Query field columns ───────────────────────────────────────────────────────
@@ -327,12 +328,19 @@ def query_server(input, output, session,
                 query_intr=input.query_intr_land() or "",
                 query_other_id=(input.query_other_id_land() if input.include_other_id_land() else ""),
             )
-            with ui.Progress(min=0, max=3) as p:
+            with ui.Progress(min=0, max=4) as p:
                 p.set(0, message="Processing upload", detail="Processing data...")
                 await asyncio.sleep(0)
                 p.set(1, message="Processing upload", detail="Fetching publications from PubMed...")
                 df = await asyncio.to_thread(fetch_pubs_fn, df)
-                p.set(3, message="Processing upload", detail="Done")
+                p.set(2, message="Processing upload", detail="Checking results status...")
+                if "study_results" not in df.columns and "nct_number" in df.columns:
+                    nct_ids = df["nct_number"].dropna().unique().tolist()
+                    results_map = await asyncio.to_thread(fetch_results_status, nct_ids)
+                    df["study_results"] = df["nct_number"].map(
+                        lambda nct: "Yes" if results_map.get(nct, False) else "No"
+                    )
+                p.set(4, message="Processing upload", detail="Done")
                 await asyncio.sleep(0)
             api_data.set(None)
             upload_data.set(df)

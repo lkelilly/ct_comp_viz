@@ -61,6 +61,9 @@ app_ui = ui.page_bootstrap(
         ui.tags.style("""
             body { font-family: system-ui, Avenir, Helvetica, Arial, sans-serif; margin: 0; }
             .bslib-sidebar-layout { height: calc(100vh - 56px); }
+            .sidebar-content.bslib-gap-spacing {
+                padding-top: 1.5rem !important;
+            }
 
             .bslib-sidebar-layout > .main {
                 padding-left: 15px !important;
