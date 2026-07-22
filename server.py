@@ -677,8 +677,9 @@ def server(input, output, session):
         elif source == "upload":
             right_btns.append(
                 ui.tags.button(
-                    "Upload New Data",
-                    class_="btn btn-sm btn-secondary me-2 mt-1",
+                    ui.span("Upload New Data", class_="label-full"),
+                    ui.span("New Upload", class_="label-short"),
+                    class_="btn btn-sm btn-secondary me-2 mt-1 btn-upload-new",
                     onclick="document.getElementById('upload_file_new').click();",
                     type="button",
                 )

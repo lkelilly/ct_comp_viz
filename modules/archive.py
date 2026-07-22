@@ -85,6 +85,9 @@ def _norm(val, field):
     # Normalize study_results: a URL means "yes" (has results)
     if field == "study_results" and s.startswith("http"):
         return "yes"
+    # Collapse all whitespace (newlines, tabs, multiple spaces) into single space
+    # so CSV-round-tripped text matches fresh API text with embedded newlines.
+    s = re.sub(r'\s+', ' ', s)
     s = re.sub(r'\s*\|\s*', '|', s)
     return s or None
 
@@ -302,7 +305,7 @@ def archive_ui():
                 "archive_filter", None,
                 placeholder="Search by compound",
             ),
-            class_="mb-3",
+            class_="mb-3 w-80",
         ),
         ui.div(
             # Column 1: Curated datasets
@@ -313,18 +316,21 @@ def archive_ui():
                     class_="d-block text-muted mb-3",
                 ),
                 ui.output_ui("curated_datasets_ui"),
-                class_="col-md-6",
+                class_="col-6",
             ),
             # Column 2: Saved in this session
             ui.div(
                 ui.div(
-                    ui.h6("Saved in this session", class_="fw-semibold mb-0"),
-                    ui.input_file("archive_upload_file", None, accept=".csv",
-                                  button_label="Choose CSV", multiple=False),
-                    class_="mb-2",
+                    ui.h6("Saved in this session", class_="fw-semibold col-6"),
+                    ui.div(
+                        ui.input_file("archive_upload_file", None, accept=".csv",
+                                    button_label="Choose CSV", multiple=False),
+                        class_="col-6 d-flex justify-content-end",
+                    ),
+                    class_="row",
                 ),
                 ui.output_ui("session_archive_cards"),
-                class_="col-md-6",
+                class_="col-6",
             ),
             class_="row",
         ),

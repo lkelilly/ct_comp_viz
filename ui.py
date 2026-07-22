@@ -91,13 +91,29 @@ app_ui = ui.page_bootstrap(
                 background: #f8f9fa;
             }
 
+            #inner_tabs > .nav {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+            }
+
             #inner_tabs .nav-link {
                 font-weight: 600;
                 margin-left: 0.5rem;
+                white-space: nowrap;
             }
 
              #inner_tabs .nav-link.active {
                 font-weight: 700;
+            }
+
+            /* Responsive label for upload button */
+            @media (max-width: 1488px) {
+                .btn-upload-new .label-full { display: none; }
+                .btn-upload-new .label-short { display: inline; }
+            }
+            @media (min-width: 1489px) {
+                .btn-upload-new .label-full { display: inline; }
+                .btn-upload-new .label-short { display: none; }
             }
 
 
@@ -125,7 +141,7 @@ app_ui = ui.page_bootstrap(
             margin-top: 0 !important;
             margin-bottom: 0 !important;
           }
-          .shiny-input-container:has(#upload_file) {
+          .shiny-input-container {
             margin-bottom: 0 !important;
           }
         """),

@@ -592,7 +592,7 @@ def process_raw_ctgov(df: pd.DataFrame, query_intr: str = "", query_other_id: st
             )
             # Normalize month-only strings ("YYYY-MM") so pd.to_datetime can parse them
             df[col] = df[col].apply(_pad_month_only)
-            df[col] = pd.to_datetime(df[col], errors="coerce", utc=False)
+            df[col] = pd.to_datetime(df[col], errors="coerce", format="mixed", dayfirst=False)
 
     # Drop rows where all three date columns are NaT / missing
     date_cols = [c for c in ("start_date", "primary_completion_date", "completion_date")

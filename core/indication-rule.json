@@ -79,8 +79,8 @@
       "Hypertension",
       "HTN",
       "High Blood Pressure",
-      "Arterial Hypertension",
-      "Essential Hypertension"
+      "Blood Pressure, High",
+      "Elevated Blood Pressure"
     ],
     "HoFH": [
       "Familial Hypercholesterolemia - Homozygous",
@@ -196,7 +196,12 @@
       "atherosclerosis",
       "arteriosclerosis"
     ],
-    "pk_terms": ["pharmacokinetic", "pharmacokinetics"]
+    "pk_terms": ["pharmacokinetic", "pharmacokinetics"],
+    "htn_endpoint_terms": [
+      "blood pressure", 
+      "systolic blood pressure", 
+      "diastolic blood pressure", 
+      "sbp", "dbp"]
   },
   "overrides": [
     {

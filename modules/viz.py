@@ -51,10 +51,9 @@ _INDICATION_COLORS = [
     "#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B3",
     "#937860", "#DA8BC3", "#8C8C8C", "#CCB974", "#64B5CD",
     "#2D6A4F", "#B5E48C", "#F4A261", "#E76F51", "#264653",
-    "#AA0DFE", "#3283FE", "#85660D", "#782AB6", "#16FF32",
-    "#F7E1A0", "#E2E2E2", "#1CBE4F", "#FE00FA", "#FEAF16",
-    "#F8A19F", "#90AD1C", "#F6222E", "#1CFFCE", "#2ED9FF",
-    "#B10DA1", "#FC1CBF", "#FA0087",
+    "#981B76", "#67E4CF", "#A6B0D9", "#83862D", "#D2AFAC",
+    "#98491B", "#2D7A86", "#CD3CDD", "#4D3E74", "#743E44",
+    "#6C3CDD", "#D14788", "#45A197", "#B88A2E", "#3C97DD",
 ]
 
 
@@ -440,7 +439,7 @@ def viz_server(input, output, session, active_data):
             fig.update_layout(
                 height=fig_height,
                 autosize=True,
-                font=dict(size=base_font),
+                font=dict(size=base_font, family="Open Sans, Arial, sans-serif"),
                 hovermode="closest",
                 legend=dict(
                     orientation="v",

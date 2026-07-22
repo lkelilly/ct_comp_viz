@@ -46,6 +46,7 @@ Step 2 — Apply priority rules (highest priority):
   2a. T2D + HbA1c endpoint          → "Type 2 Diabetes"
   2b. CWM + weight endpoint          → "Chronic Weight Management"
   2c. MACE/cvot-trigger in outcome   → CVOT subtype based on condition
+  2d. Hypertension + blood pressure endpoint → "Hypertension"
 
 Step 3 — Apply JSON override rules in order (LDL-C, HoFH/HeFH, title-CVOT).
   First matching rule wins.
@@ -53,7 +54,7 @@ Step 3 — Apply JSON override rules in order (LDL-C, HoFH/HeFH, title-CVOT).
 Step 4 — Secondary outcome fallback (override rules only).
 
 Step 5 — Pharmacokinetics fallback (last resort):
-  If primary or secondary outcome text mentions "pharmacokinetic(s)" or a
+  If primary outcome text mentions "pharmacokinetic(s)" or a
   standalone "PK" (word-boundary match) → "Pharmacokinetics".
 
 To update synonyms, priority terms, or override rules, edit indication-rule.json
@@ -168,6 +169,11 @@ def map_indication(conditions_str: str, outcome_str: str = "", title_str: str = 
         if any(syn in cond_text for syn in _SYNONYM_BY_LABEL.get("Chronic Weight Management", [])):
             return "Chronic Weight Management"
 
+    # Step 2d: Priority — blood pressure endpoint + Hypertension in any condition → Hypertension
+    if any(t in outc_text for t in _PRIORITY_RULES.get("htn_endpoint_terms", [])):
+        if any(syn in cond_text for syn in _SYNONYM_BY_LABEL.get("Hypertension", [])):
+            return "Hypertension"
+
     # Step 2c: Priority — MACE / CVOT trigger in primary outcome → CVOT subtype
     cvot_triggers = (
         _PRIORITY_RULES.get("cvot_mace_terms", [])
@@ -199,7 +205,7 @@ def map_indication(conditions_str: str, outcome_str: str = "", title_str: str = 
             return rule["then_label"]
 
     # Step 5: if other override/priority rules have not been specified, check for PK
-    _pk_text = outc_text + " " + sec_outc_text
+    _pk_text = outc_text
     if any(term in _pk_text for term in _PRIORITY_RULES.get("pk_terms", [])):
         return "Pharmacokinetics"
     if re.search(r"\bpk\b", _pk_text):
